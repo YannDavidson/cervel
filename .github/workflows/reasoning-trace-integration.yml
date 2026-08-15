@@ -1,0 +1,106 @@
+name: Reasoning Trace Integration
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-reasoning-trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cervel
+          POSTGRES_PASSWORD: cervel
+          POSTGRES_DB: cervel
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PORT: 8787
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL Reasoning CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - name: Start MinIO
+        run: |
+          docker run -d --name cervel-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=cervel -e MINIO_ROOT_PASSWORD=change-me-now \
+            minio/minio:latest server /data
+          for i in {1..30}; do curl -fsS http://localhost:9000/minio/health/live >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Bootstrap runtime
+        run: |
+          npm run db:migrate
+          npm run --silent db:bootstrap > /tmp/bootstrap.json
+          npm run dev:api > /tmp/cervel-api.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://localhost:8787/health >/dev/null && exit 0; sleep 1; done
+          cat /tmp/cervel-api.log; exit 1
+      - name: Exercise claims conflicts reasoning and full trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          STORAGE_ID=$(jq -r .storageLocationId /tmp/bootstrap.json)
+
+          CREATE=$(curl -fsS -X POST http://localhost:8787/v1/objects \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"type\":\"note\",\"title\":\"Reasoning Trace Fixture\"}")
+          CKO_ID=$(echo "$CREATE" | jq -r .id)
+
+          CONTENT=$(printf 'CERVEL supports auditability.\n\nCERVEL never supports auditability.\n\nTrace chains connect answers to source artifacts.' | base64 -w0)
+          ARTIFACT=$(curl -fsS -X POST "http://localhost:8787/v1/objects/$CKO_ID/artifacts" \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"storage_location_id\":\"$STORAGE_ID\",\"filename\":\"reasoning.md\",\"mime_type\":\"text/markdown\",\"content_base64\":\"$CONTENT\"}")
+          test "$(echo "$ARTIFACT" | jq -r .embeddings_created)" -eq 3
+
+          REASON=$(curl -fsS -X POST http://localhost:8787/v1/reason \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"Does CERVEL support auditability and how is it traced?\",\"profile\":\"research\",\"max_evidence_items\":6}")
+          echo "$REASON" | jq .
+          ANSWER_ID=$(echo "$REASON" | jq -r .id)
+          CCP_ID=$(echo "$REASON" | jq -r .context_package_id)
+          test -n "$ANSWER_ID"
+          test -n "$CCP_ID"
+          test "$(echo "$REASON" | jq '.claims | length')" -ge 2
+          test "$(echo "$REASON" | jq '.citations | length')" -ge 2
+          test "$(echo "$REASON" | jq '.conflicts | length')" -ge 1
+          test "$(echo "$REASON" | jq -r .uncertainty.contested)" = "true"
+          echo "$REASON" | jq -e '.answer | contains("[1]")' >/dev/null
+
+          TRACE=$(curl -fsS "http://localhost:8787/v1/answers/$ANSWER_ID/trace" \
+            -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          echo "$TRACE" | jq .
+          test "$(echo "$TRACE" | jq -r .trace_version)" = "0.1"
+          test "$(echo "$TRACE" | jq -r .answer.id)" = "$ANSWER_ID"
+          test "$(echo "$TRACE" | jq -r .context_package.id)" = "$CCP_ID"
+          test "$(echo "$TRACE" | jq '.chain | length')" -ge 2
+          echo "$TRACE" | jq -e '.chain[0].claim.id != null' >/dev/null
+          echo "$TRACE" | jq -e '.chain[0].fragment.id != null' >/dev/null
+          echo "$TRACE" | jq -e '.chain[0].artifact.id != null' >/dev/null
+          echo "$TRACE" | jq -e '.chain[0].source.cko_id != null' >/dev/null
+          echo "$TRACE" | jq -e '.chain[0].source.title == "Reasoning Trace Fixture"' >/dev/null
+          test "$(echo "$TRACE" | jq '.conflicts | length')" -ge 1
+
+      - name: Show service logs on failure
+        if: failure()
+        run: cat /tmp/cervel-api.log || true

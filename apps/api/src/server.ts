@@ -8,6 +8,7 @@ import { assertPrincipalInNode } from "./access";
 import { embedMissingFragments } from "./embeddings";
 import { hybridRetrieve, resolveRetrievalScope } from "./retrieval";
 import { assembleContextPackage } from "./context";
+import { executeContextReasoning, loadAnswerTrace } from "./reasoning";
 
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
 
@@ -21,7 +22,7 @@ function requiredHeaderPrincipal(request: { headers: Record<string, unknown> }):
   return raw;
 }
 
-app.get("/health", async () => ({ ok: true, service: "cervel-node-alpha", cortex: "retrieval-v0.1" }));
+app.get("/health", async () => ({ ok: true, service: "cervel-node-alpha", cortex: "reasoning-trace-v0.1" }));
 
 app.post("/v1/objects", async (request, reply) => {
   const principalId = requiredHeaderPrincipal(request as never);
@@ -151,9 +152,46 @@ app.get("/v1/context/:id", async (request, reply) => {
     if (ccp.rowCount !== 1) throw Object.assign(new Error("CCP_NOT_FOUND"), { statusCode: 404 });
     if (ccp.rows[0].principal_id !== principalId) throw Object.assign(new Error("FORBIDDEN_CONTEXT_SCOPE"), { statusCode: 403 });
     const evidence = await client.query(`SELECT * FROM context_evidence WHERE context_package_id = $1 ORDER BY evidence_role, ordinal`, [id]);
-    return { ...ccp.rows[0], evidence: evidence.rows };
+    const claims = await client.query(`SELECT c.* FROM context_claims cc JOIN claims c ON c.id=cc.claim_id WHERE cc.context_package_id=$1 ORDER BY c.created_at`, [id]);
+    return { ...ccp.rows[0], evidence: evidence.rows, claims: claims.rows };
   });
   return reply.send(result);
+});
+
+app.post("/v1/context/:id/reason", async (request, reply) => {
+  const principalId = requiredHeaderPrincipal(request as never);
+  const { id } = request.params as { id: string };
+  const result = await withTransaction((client) => executeContextReasoning(client, id, principalId));
+  return reply.code(201).send(result);
+});
+
+app.post("/v1/reason", async (request, reply) => {
+  const principalId = requiredHeaderPrincipal(request as never);
+  const body = request.body as { node_id: string; workspace_id?: string; query: string; task_type?: string; profile?: string; as_of?: string; library_ids?: string[]; max_evidence_items?: number };
+  const result = await withTransaction(async (client) => {
+    const ccp = await assembleContextPackage(client, { nodeId: body.node_id, workspaceId: body.workspace_id ?? null, principalId, query: body.query, taskType: body.task_type, profile: body.profile, asOf: body.as_of ?? null, libraryIds: body.library_ids ?? [], maxEvidenceItems: body.max_evidence_items });
+    return executeContextReasoning(client, ccp.id, principalId);
+  });
+  return reply.code(201).send(result);
+});
+
+app.get("/v1/answers/:id", async (request, reply) => {
+  const principalId = requiredHeaderPrincipal(request as never);
+  const { id } = request.params as { id: string };
+  const answer = await withTransaction(async (client) => {
+    const result = await client.query(`SELECT * FROM answers WHERE id=$1`, [id]);
+    if (result.rowCount !== 1) throw Object.assign(new Error("ANSWER_NOT_FOUND"), { statusCode: 404 });
+    if (result.rows[0].principal_id !== principalId) throw Object.assign(new Error("FORBIDDEN_ANSWER_SCOPE"), { statusCode: 403 });
+    return result.rows[0];
+  });
+  return reply.send(answer);
+});
+
+app.get("/v1/answers/:id/trace", async (request, reply) => {
+  const principalId = requiredHeaderPrincipal(request as never);
+  const { id } = request.params as { id: string };
+  const trace = await withTransaction((client) => loadAnswerTrace(client, id, principalId));
+  return reply.send(trace);
 });
 
 app.setErrorHandler((error, _request, reply) => {

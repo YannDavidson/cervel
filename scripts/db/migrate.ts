@@ -2,6 +2,13 @@ import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
 
+function stripMigrationTransaction(sql: string): string {
+  return sql
+    .replace(/^\s*BEGIN;\s*/i, "")
+    .replace(/\s*COMMIT;\s*$/i, "")
+    .trim();
+}
+
 async function main() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -26,7 +33,9 @@ async function main() {
       }
 
       process.stdout.write(`Applying ${file}... `);
-      const sql = await readFile(resolve(dir, file), "utf8");
+      const rawSql = await readFile(resolve(dir, file), "utf8");
+      const sql = stripMigrationTransaction(rawSql);
+
       await client.query("BEGIN");
       try {
         await client.query(sql);

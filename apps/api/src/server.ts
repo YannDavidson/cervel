@@ -203,8 +203,9 @@ app.get("/v1/resolve", async (request, reply) => {
 });
 
 app.setErrorHandler((error, _request, reply) => {
-  const status = (error as Error & { statusCode?: number }).statusCode ?? 500;
-  reply.code(status).send({ error: error.message });
+  const normalized = error instanceof Error ? error : new Error(String(error));
+  const status = (normalized as Error & { statusCode?: number }).statusCode ?? 500;
+  reply.code(status).send({ error: normalized.message });
 });
 
 const port = Number(process.env.PORT ?? 8787);

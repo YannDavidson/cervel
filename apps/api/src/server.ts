@@ -185,10 +185,18 @@ app.get("/v1/resolve", async (request, reply) => {
     if (parsed.fragment?.kind === "frag") {
       const fragment = await client.query(`SELECT * FROM fragments WHERE id = $1 AND cko_id = $2`, [parsed.fragment.value, ckoId]);
       if (fragment.rowCount !== 1) throw Object.assign(new Error("FRAGMENT_NOT_FOUND"), { statusCode: 404 });
-      return { canonical_uri: `${canonicalCKURI(node.rows[0].slug, ckoId!)}#frag/${parsed.fragment.value}`, resource_type: "fragment", representation: fragment.rows[0] };
+      return {
+        canonical_uri: `${canonicalCKURI(node.rows[0].slug, ckoId!)}#frag/${parsed.fragment.value}`,
+        resource_type: "fragment",
+        representation: fragment.rows[0]
+      };
     }
 
-    return { canonical_uri: canonicalCKURI(node.rows[0].slug, ckoId!), resource_type: "cko", representation: object.rows[0] };
+    return {
+      canonical_uri: canonicalCKURI(node.rows[0].slug, ckoId!),
+      resource_type: "cko",
+      representation: object.rows[0]
+    };
   });
 
   return reply.send(result);
@@ -200,8 +208,9 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 const port = Number(process.env.PORT ?? 8787);
-app.listen({ host: "0.0.0.0", port }).catch(async (error) => {
-  app.log.error(error);
+app.listen({ host: "0.0.0.0", port }).catch(async (error: unknown) => {
+  const normalized = error instanceof Error ? error : new Error(String(error));
+  app.log.error(normalized);
   await db.end();
   process.exit(1);
 });

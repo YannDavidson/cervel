@@ -1,0 +1,25 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://schemas.cervel.ai/relationship/0.1/schema.json",
+  "title":"CERVEL Relationship v0.1",
+  "type":"object","additionalProperties":false,
+  "required":["relationship_version","id","node_id","source","predicate","target","epistemic","created_at"],
+  "properties":{
+    "relationship_version":{"const":"0.1"},
+    "id":{"type":"string","format":"uuid"},
+    "node_id":{"type":"string","format":"uuid"},
+    "source":{"$ref":"#/$defs/ref"},
+    "predicate":{"type":"string","pattern":"^[A-Z][A-Z0-9_]*(?::[A-Z][A-Z0-9_]*)?$"},
+    "target":{"$ref":"#/$defs/ref"},
+    "properties":{"type":"object","additionalProperties":true},
+    "epistemic":{"type":"object","additionalProperties":false,"required":["status"],"properties":{"status":{"enum":["inferred","suggested","confirmed","verified","disputed","rejected"]},"confidence":{"type":["number","null"],"minimum":0,"maximum":1}}},
+    "evidence_fragment_ids":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true},
+    "valid_from":{"type":["string","null"],"format":"date-time"},
+    "valid_until":{"type":["string","null"],"format":"date-time"},
+    "created_by":{"type":["string","null"],"format":"uuid"},
+    "created_at":{"type":"string","format":"date-time"}
+  },
+  "$defs":{
+    "ref":{"type":"object","additionalProperties":false,"required":["ref_type","ref_id"],"properties":{"ref_type":{"enum":["cko","entity","claim","principal","library"]},"ref_id":{"type":"string","format":"uuid"}}}
+  }
+}

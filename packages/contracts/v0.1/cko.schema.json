@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.cervel.ai/cko/0.1/schema.json",
+  "title": "CERVEL Knowledge Object v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cko_version","id","node_id","workspace_id","type","title","lifecycle","created_at","updated_at"],
+  "properties": {
+    "cko_version": {"const":"0.1"},
+    "id": {"$ref":"#/$defs/uuidv7"},
+    "node_id": {"$ref":"#/$defs/uuidv7"},
+    "workspace_id": {"$ref":"#/$defs/uuidv7"},
+    "type": {"type":"string","pattern":"^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)?$"},
+    "title": {"type":"object","additionalProperties":false,"required":["primary"],"properties":{"primary":{"type":"string","minLength":1,"maxLength":1024},"alternate":{"type":"array","items":{"type":"string","maxLength":1024},"uniqueItems":true}}},
+    "summary":{"type":["string","null"],"maxLength":20000},
+    "primary_artifact_id":{"oneOf":[{"$ref":"#/$defs/uuidv7"},{"type":"null"}]},
+    "languages":{"type":"array","items":{"type":"string","pattern":"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"},"uniqueItems":true},
+    "context":{"type":"object","additionalProperties":false,"properties":{"jurisdictions":{"type":"array","items":{"type":"string","maxLength":255},"uniqueItems":true},"place_entity_ids":{"type":"array","items":{"$ref":"#/$defs/uuidv7"},"uniqueItems":true},"published_at":{"$ref":"#/$defs/dateTimeOrNull"},"observed_at":{"$ref":"#/$defs/dateTimeOrNull"},"valid_from":{"$ref":"#/$defs/dateTimeOrNull"},"valid_until":{"$ref":"#/$defs/dateTimeOrNull"}}},
+    "epistemic":{"type":"object","additionalProperties":false,"properties":{"status":{"enum":["raw","extracted","inferred","claimed","corroborated","verified","authoritative","disputed","superseded","rejected"]},"confidence":{"type":["number","null"],"minimum":0,"maximum":1}}},
+    "policy_id":{"oneOf":[{"$ref":"#/$defs/uuidv7"},{"type":"null"}]},
+    "lifecycle":{"type":"object","additionalProperties":false,"required":["status"],"properties":{"status":{"enum":["active","archived","deleted","tombstoned"]},"version":{"type":"integer","minimum":1,"default":1}}},
+    "created_by":{"oneOf":[{"$ref":"#/$defs/uuidv7"},{"type":"null"}]},
+    "created_at":{"$ref":"#/$defs/dateTime"},
+    "updated_at":{"$ref":"#/$defs/dateTime"},
+    "extensions":{"type":"object","propertyNames":{"pattern":"^[a-z][a-z0-9_-]*:[a-z][a-z0-9_.-]*$"},"additionalProperties":true}
+  },
+  "$defs": {
+    "uuidv7":{"type":"string","format":"uuid","pattern":"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "dateTime":{"type":"string","format":"date-time"},
+    "dateTimeOrNull":{"oneOf":[{"type":"string","format":"date-time"},{"type":"null"}]}
+  }
+}

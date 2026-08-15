@@ -1,0 +1,27 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://schemas.cervel.ai/claim/0.1/schema.json",
+  "title":"CERVEL Claim v0.1",
+  "type":"object","additionalProperties":false,
+  "required":["claim_version","id","node_id","subject","predicate","object","epistemic","created_at"],
+  "properties":{
+    "claim_version":{"const":"0.1"},
+    "id":{"type":"string","format":"uuid"},
+    "node_id":{"type":"string","format":"uuid"},
+    "subject":{"$ref":"#/$defs/term"},
+    "predicate":{"type":"string","pattern":"^[a-z][a-z0-9_.:-]{1,127}$"},
+    "object":{"oneOf":[{"$ref":"#/$defs/term"},{"$ref":"#/$defs/literal"}]},
+    "qualifiers":{"type":"object","additionalProperties":true},
+    "evidence_fragment_ids":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true},
+    "source_cko_ids":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true},
+    "epistemic":{"type":"object","required":["status"],"additionalProperties":false,"properties":{"status":{"enum":["extracted","inferred","claimed","corroborated","verified","authoritative","disputed","superseded","rejected"]},"confidence":{"type":["number","null"],"minimum":0,"maximum":1}}},
+    "valid_from":{"type":["string","null"],"format":"date-time"},
+    "valid_until":{"type":["string","null"],"format":"date-time"},
+    "created_by":{"type":["string","null"],"format":"uuid"},
+    "created_at":{"type":"string","format":"date-time"}
+  },
+  "$defs":{
+    "term":{"type":"object","additionalProperties":false,"required":["ref_type","ref_id"],"properties":{"ref_type":{"enum":["cko","entity","claim"]},"ref_id":{"type":"string","format":"uuid"}}},
+    "literal":{"type":"object","additionalProperties":false,"required":["value","datatype"],"properties":{"value":{},"datatype":{"enum":["string","integer","number","boolean","date","datetime","uri","json"]},"language":{"type":["string","null"]},"unit":{"type":["string","null"]}}}
+  }
+}

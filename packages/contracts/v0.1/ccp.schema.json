@@ -1,0 +1,28 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://schemas.cervel.ai/ccp/0.1/schema.json",
+  "title":"CERVEL Context Package v0.1",
+  "type":"object","additionalProperties":false,
+  "required":["ccp_version","id","node_id","request","principal","authorization_scope","evidence","trace","created_at"],
+  "properties":{
+    "ccp_version":{"const":"0.1"},
+    "id":{"type":"string","format":"uuid"},
+    "node_id":{"type":"string","format":"uuid"},
+    "workspace_id":{"type":["string","null"],"format":"uuid"},
+    "profile":{"enum":["qa","research","decision_support","agent_action","summarization","comparison","local_context","historical_reconstruction"]},
+    "request":{"type":"object","additionalProperties":false,"required":["query","task_type"],"properties":{"query":{"type":"string","minLength":1},"task_type":{"type":"string","minLength":1},"as_of":{"type":["string","null"],"format":"date-time"},"language":{"type":["string","null"]},"geography":{"type":"object","additionalProperties":true},"jurisdictions":{"type":"array","items":{"type":"string"}},"constraints":{"type":"object","additionalProperties":true}}},
+    "principal":{"type":"object","additionalProperties":false,"required":["principal_id","principal_type"],"properties":{"principal_id":{"type":"string","format":"uuid"},"principal_type":{"enum":["human","team","organization","application","agent","model","node","service"]},"acting_for":{"type":["string","null"],"format":"uuid"}}},
+    "authorization_scope":{"type":"object","additionalProperties":false,"required":["policy_snapshot_hash","allowed_operations"],"properties":{"policy_snapshot_hash":{"type":"string","pattern":"^[0-9a-f]{64}$"},"allowed_operations":{"type":"array","items":{"enum":["ai_discover","ai_read","ai_retrieve","ai_summarize","ai_reason","ai_embed","ai_derive","ai_export","ai_train"]},"uniqueItems":true},"library_ids":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true}}},
+    "entities":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true},
+    "claims":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true},
+    "evidence":{"type":"object","additionalProperties":false,"required":["primary","supporting","conflicting"],"properties":{"primary":{"$ref":"#/$defs/evidenceArray"},"supporting":{"$ref":"#/$defs/evidenceArray"},"conflicting":{"$ref":"#/$defs/evidenceArray"}}},
+    "uncertainty":{"type":"object","additionalProperties":true},
+    "budget":{"type":"object","additionalProperties":false,"properties":{"max_input_tokens":{"type":["integer","null"],"minimum":1},"max_evidence_items":{"type":["integer","null"],"minimum":1}}},
+    "trace":{"type":"object","additionalProperties":false,"required":["provenance_event_ids"],"properties":{"provenance_event_ids":{"type":"array","items":{"type":"string","format":"uuid"},"uniqueItems":true}}},
+    "created_at":{"type":"string","format":"date-time"}
+  },
+  "$defs":{
+    "evidenceArray":{"type":"array","items":{"$ref":"#/$defs/evidenceItem"}},
+    "evidenceItem":{"type":"object","additionalProperties":false,"required":["fragment_id","cko_id","scores","epistemic_status","citation"],"properties":{"fragment_id":{"type":"string","format":"uuid"},"cko_id":{"type":"string","format":"uuid"},"claim_ids":{"type":"array","items":{"type":"string","format":"uuid"}},"scores":{"type":"object","additionalProperties":false,"properties":{"semantic":{"type":["number","null"],"minimum":0,"maximum":1},"lexical":{"type":["number","null"],"minimum":0,"maximum":1},"graph":{"type":["number","null"],"minimum":0,"maximum":1},"temporal":{"type":["number","null"],"minimum":0,"maximum":1},"geographic":{"type":["number","null"],"minimum":0,"maximum":1},"authority":{"type":["number","null"],"minimum":0,"maximum":1},"epistemic":{"type":["number","null"],"minimum":0,"maximum":1},"final":{"type":"number","minimum":0,"maximum":1}}},"epistemic_status":{"type":"string"},"citation":{"type":"object","additionalProperties":false,"required":["uri"],"properties":{"uri":{"type":"string","pattern":"^cervel://"},"label":{"type":["string","null"]}}}}}
+  }
+}

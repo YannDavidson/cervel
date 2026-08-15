@@ -1,0 +1,16 @@
+{
+  "name": "cervel-v0.1-starter",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "test": "jest",
+    "test:contracts": "jest tests/contracts",
+    "test:ckuri": "jest tests/ckuri"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
+  }
+}

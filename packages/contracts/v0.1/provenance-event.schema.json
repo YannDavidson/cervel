@@ -1,0 +1,22 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://schemas.cervel.ai/provenance-event/0.1/schema.json",
+  "title":"CERVEL Provenance Event v0.1",
+  "type":"object","additionalProperties":false,
+  "required":["provenance_version","id","node_id","event_type","actor","outputs","occurred_at"],
+  "properties":{
+    "provenance_version":{"const":"0.1"},
+    "id":{"type":"string","format":"uuid"},
+    "node_id":{"type":"string","format":"uuid"},
+    "event_type":{"enum":["created","captured","imported","mirrored","extracted","translated","summarized","chunked","embedded","classified","linked","claim_extracted","verified","edited","superseded","exported","retrieved","used_in_context","used_in_response","redacted"]},
+    "actor":{"type":"object","additionalProperties":false,"required":["actor_type"],"properties":{"actor_type":{"enum":["human","service","agent","model","node"]},"principal_id":{"type":["string","null"],"format":"uuid"},"model_run_id":{"type":["string","null"],"format":"uuid"}}},
+    "inputs":{"type":"array","items":{"$ref":"#/$defs/resourceRef"}},
+    "outputs":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/resourceRef"}},
+    "source":{"type":"object","additionalProperties":true,"properties":{"url":{"type":["string","null"],"format":"uri"},"publisher":{"type":["string","null"]},"captured_at":{"type":["string","null"],"format":"date-time"}}},
+    "parameters":{"type":"object","additionalProperties":true},
+    "occurred_at":{"type":"string","format":"date-time"}
+  },
+  "$defs":{
+    "resourceRef":{"type":"object","additionalProperties":false,"required":["resource_type","resource_id"],"properties":{"resource_type":{"enum":["cko","artifact","fragment","claim","relationship","context_package","response"]},"resource_id":{"type":"string","format":"uuid"},"sha256":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"}}}
+  }
+}

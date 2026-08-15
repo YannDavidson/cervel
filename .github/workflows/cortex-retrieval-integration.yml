@@ -1,0 +1,99 @@
+name: Cortex Retrieval Integration
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-cortex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cervel
+          POSTGRES_PASSWORD: cervel
+          POSTGRES_DB: cervel
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PORT: 8787
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL Cortex CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - name: Start MinIO
+        run: |
+          docker run -d --name cervel-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=cervel -e MINIO_ROOT_PASSWORD=change-me-now \
+            minio/minio:latest server /data
+          for i in {1..30}; do curl -fsS http://localhost:9000/minio/health/live >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Bootstrap runtime
+        run: |
+          npm run db:migrate
+          npm run --silent db:bootstrap > /tmp/bootstrap.json
+          npm run dev:api > /tmp/cervel-api.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://localhost:8787/health >/dev/null && exit 0; sleep 1; done
+          cat /tmp/cervel-api.log; exit 1
+      - name: Exercise embeddings hybrid retrieval and CCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          STORAGE_ID=$(jq -r .storageLocationId /tmp/bootstrap.json)
+
+          CREATE=$(curl -fsS -X POST http://localhost:8787/v1/objects \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"type\":\"note\",\"title\":\"Embedded Intelligence\"}")
+          CKO_ID=$(echo "$CREATE" | jq -r .id)
+          CONTENT=$(printf 'Embedded intelligence connects knowledge to local context.\n\nCERVEL gives knowledge durable identity and provenance.\n\nUnrelated paragraph about gardening tomatoes.' | base64 -w0)
+          ARTIFACT=$(curl -fsS -X POST "http://localhost:8787/v1/objects/$CKO_ID/artifacts" \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"storage_location_id\":\"$STORAGE_ID\",\"filename\":\"research.md\",\"mime_type\":\"text/markdown\",\"content_base64\":\"$CONTENT\"}")
+          test "$(echo "$ARTIFACT" | jq -r .embeddings_created)" -eq 3
+
+          SEARCH=$(curl -fsS -X POST http://localhost:8787/v1/search \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"durable knowledge identity provenance\"}")
+          echo "$SEARCH" | jq .
+          test "$(echo "$SEARCH" | jq '.results | length')" -gt 0
+          echo "$SEARCH" | jq -e '.results[0].citationUri | startswith("cervel://local/cko/")' >/dev/null
+          echo "$SEARCH" | jq -e '.results[0].semantic >= 0 and .results[0].final >= 0' >/dev/null
+
+          CCP=$(curl -fsS -X POST http://localhost:8787/v1/context \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"How does CERVEL make knowledge durable?\",\"profile\":\"research\"}")
+          echo "$CCP" | jq .
+          CCP_ID=$(echo "$CCP" | jq -r .id)
+          test "$(echo "$CCP" | jq -r .ccp_version)" = "0.1"
+          test "$(echo "$CCP" | jq '.evidence.primary | length')" -gt 0
+          test "$(echo "$CCP" | jq -r .authorization_scope.policy_snapshot_hash | length)" -eq 64
+          test "$(echo "$CCP" | jq '.trace.provenance_event_ids | length')" -eq 1
+
+          STORED=$(curl -fsS "http://localhost:8787/v1/context/$CCP_ID" -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          test "$(echo "$STORED" | jq -r .id)" = "$CCP_ID"
+
+      - name: Show service logs on failure
+        if: failure()
+        run: cat /tmp/cervel-api.log || true

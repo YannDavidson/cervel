@@ -7,6 +7,12 @@ export interface ReasoningAdapter {
   execute(input: ReasoningInput): Promise<ReasoningOutput>;
 }
 
+function externalTimeoutSignal(): AbortSignal {
+  const configured = Number(process.env.CERVEL_REASONING_TIMEOUT_MS ?? 12000);
+  const timeoutMs = Number.isFinite(configured) ? Math.max(1000, Math.min(60000, configured)) : 12000;
+  return AbortSignal.timeout(timeoutMs);
+}
+
 export class DeterministicReasoningAdapter implements ReasoningAdapter {
   id = "local:deterministic-v0.1";
   async execute(input: ReasoningInput): Promise<ReasoningOutput> {
@@ -24,11 +30,14 @@ export class OpenAIResponsesAdapter implements ReasoningAdapter {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "authorization": `Bearer ${this.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: this.model, input: `Answer only from the supplied evidence. Cite evidence with [n].\nQUESTION: ${input.query}\nEVIDENCE:\n${evidence}` })
+      body: JSON.stringify({ model: this.model, input: `Answer only from the supplied evidence. Cite evidence with [n].\nQUESTION: ${input.query}\nEVIDENCE:\n${evidence}` }),
+      signal: externalTimeoutSignal()
     });
     if (!response.ok) throw new Error(`OPENAI_ADAPTER_${response.status}`);
     const data = await response.json() as any;
-    return { text: data.output_text ?? data.output?.[0]?.content?.[0]?.text ?? "", provider: "openai", model: this.model, external_response_id: data.id };
+    const text = String(data.output_text ?? data.output?.[0]?.content?.[0]?.text ?? "").trim();
+    if (!text) throw new Error("OPENAI_ADAPTER_EMPTY_RESPONSE");
+    return { text, provider: "openai", model: this.model, external_response_id: data.id };
   }
 }
 
@@ -41,11 +50,13 @@ export class GeminiGenerateContentAdapter implements ReasoningAdapter {
     const response = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: `Answer only from the supplied evidence. Cite evidence with [n].\nQUESTION: ${input.query}\nEVIDENCE:\n${evidence}` }] }] })
+      body: JSON.stringify({ contents: [{ parts: [{ text: `Answer only from the supplied evidence. Cite evidence with [n].\nQUESTION: ${input.query}\nEVIDENCE:\n${evidence}` }] }] }),
+      signal: externalTimeoutSignal()
     });
     if (!response.ok) throw new Error(`GEMINI_ADAPTER_${response.status}`);
     const data = await response.json() as any;
-    const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? "";
+    const text = String(data.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? "").trim();
+    if (!text) throw new Error("GEMINI_ADAPTER_EMPTY_RESPONSE");
     return { text, provider: "google", model: this.model };
   }
 }

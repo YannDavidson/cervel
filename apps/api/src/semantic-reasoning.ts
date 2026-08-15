@@ -76,7 +76,7 @@ export async function executeSemanticKnowledgeReasoning(client: PoolClient, cont
   const confidence = await synthesizeContextConfidence(client, contextPackageId);
   const contested = Boolean(base.uncertainty?.contested) || semanticConflicts.length > 0;
   const external = await runConfiguredAdapter(client, contextPackageId, principalId, base.id, contested);
-  const externalApplied = Boolean(external && !external.failed);
+  const successfulExternal = external && !external.failed ? external : null;
 
   await client.query(
     `UPDATE answers SET uncertainty = uncertainty || $2::jsonb, trace_summary = trace_summary || $3::jsonb WHERE id=$1`,
@@ -92,11 +92,11 @@ export async function executeSemanticKnowledgeReasoning(client: PoolClient, cont
   );
   return {
     ...base,
-    answer: externalApplied ? external.text : base.answer,
-    model_run_id: externalApplied ? external.model_run_id : base.model_run_id,
+    answer: successfulExternal?.text ?? base.answer,
+    model_run_id: successfulExternal?.model_run_id ?? base.model_run_id,
     semantic: { claims: semanticClaims, conflicts: semanticConflicts, graph, confidence },
-    adapter: externalApplied
-      ? { provider: external.provider, model: external.model }
+    adapter: successfulExternal
+      ? { provider: successfulExternal.provider, model: successfulExternal.model }
       : { provider: "local", model: "cervel-trace-deterministic", fallback_from: external?.failed ? external.adapter : null },
     uncertainty: {
       ...base.uncertainty,

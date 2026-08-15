@@ -19,11 +19,19 @@ async function runConfiguredAdapter(client: PoolClient, contextPackageId: string
   );
   const adapter = resolveReasoningAdapter();
   if (adapter.id === "local:deterministic-v0.1") return null;
-  const output = await adapter.execute({
-    query: ccp.rows[0].query,
-    contested,
-    evidence: evidence.rows.map((row) => ({ text: String(row.text_content ?? ""), citation: String(row.citation?.uri ?? "") }))
-  });
+
+  let output;
+  try {
+    output = await adapter.execute({
+      query: ccp.rows[0].query,
+      contested,
+      evidence: evidence.rows.map((row) => ({ text: String(row.text_content ?? ""), citation: String(row.citation?.uri ?? "") }))
+    });
+  } catch (error: unknown) {
+    const normalized = error instanceof Error ? error.message : String(error);
+    return { failed: true as const, adapter: adapter.id, error: normalized };
+  }
+
   const model = await client.query(
     `SELECT * FROM models WHERE node_id=$1 AND provider=$2 AND model_name=$3 AND purpose='reasoning' LIMIT 1`,
     [ccp.rows[0].node_id, output.provider, output.model]
@@ -57,7 +65,7 @@ async function runConfiguredAdapter(client: PoolClient, contextPackageId: string
     outputs: [{ resourceType: "response", resourceId: answerId, sha256: outputHash }],
     parameters: { adapter: adapter.id, provider: output.provider, model: output.model, modelRunId }
   });
-  return { model_run_id: modelRunId, provider: output.provider, model: output.model, text: output.text };
+  return { failed: false as const, model_run_id: modelRunId, provider: output.provider, model: output.model, text: output.text };
 }
 
 export async function executeSemanticKnowledgeReasoning(client: PoolClient, contextPackageId: string, principalId: string) {
@@ -68,18 +76,34 @@ export async function executeSemanticKnowledgeReasoning(client: PoolClient, cont
   const confidence = await synthesizeContextConfidence(client, contextPackageId);
   const contested = Boolean(base.uncertainty?.contested) || semanticConflicts.length > 0;
   const external = await runConfiguredAdapter(client, contextPackageId, principalId, base.id, contested);
+  const externalApplied = Boolean(external && !external.failed);
+
   await client.query(
     `UPDATE answers SET uncertainty = uncertainty || $2::jsonb, trace_summary = trace_summary || $3::jsonb WHERE id=$1`,
     [base.id,
-     JSON.stringify({ semantic_conflicts: semanticConflicts.length, confidence: confidence.final, contested }),
+     JSON.stringify({
+       semantic_conflicts: semanticConflicts.length,
+       confidence: confidence.final,
+       contested,
+       external_reasoning_failed: Boolean(external?.failed),
+       external_reasoning_error: external?.failed ? external.error : null
+     }),
      JSON.stringify({ semantic_claim_count: semanticClaims.length, graph_reasoning_run_id: graph.id, graph_confidence: graph.confidence })]
   );
   return {
     ...base,
-    answer: external?.text ?? base.answer,
-    model_run_id: external?.model_run_id ?? base.model_run_id,
+    answer: externalApplied ? external.text : base.answer,
+    model_run_id: externalApplied ? external.model_run_id : base.model_run_id,
     semantic: { claims: semanticClaims, conflicts: semanticConflicts, graph, confidence },
-    adapter: external ? { provider: external.provider, model: external.model } : { provider: "local", model: "cervel-trace-deterministic" },
-    uncertainty: { ...base.uncertainty, contested, semantic_conflict_count: semanticConflicts.length, confidence: confidence.final }
+    adapter: externalApplied
+      ? { provider: external.provider, model: external.model }
+      : { provider: "local", model: "cervel-trace-deterministic", fallback_from: external?.failed ? external.adapter : null },
+    uncertainty: {
+      ...base.uncertainty,
+      contested,
+      semantic_conflict_count: semanticConflicts.length,
+      confidence: confidence.final,
+      external_reasoning_failed: Boolean(external?.failed)
+    }
   };
 }

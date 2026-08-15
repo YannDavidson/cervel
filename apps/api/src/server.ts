@@ -12,219 +12,32 @@ import { loadAnswerTrace } from "./reasoning";
 import { executeSemanticKnowledgeReasoning } from "./semantic-reasoning";
 import { enrichContextSemantics, detectTemporalScopeConflicts, multiHopGraphReasoning, synthesizeContextConfidence } from "./semantic";
 import { renderTraceUI } from "./trace-ui";
+import { registerWorkspaceRoutes } from "./workspace-routes";
 
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
+registerWorkspaceRoutes(app);
 
 function requiredHeaderPrincipal(request: { headers: Record<string, unknown> }): string {
   const raw = request.headers["x-cervel-principal-id"];
-  if (typeof raw !== "string" || !raw) {
-    const error = new Error("X-CERVEL-PRINCIPAL-ID is required");
-    (error as Error & { statusCode?: number }).statusCode = 401;
-    throw error;
-  }
+  if (typeof raw !== "string" || !raw) { const error = new Error("X-CERVEL-PRINCIPAL-ID is required"); (error as Error & { statusCode?: number }).statusCode = 401; throw error; }
   return raw;
 }
-
-app.get("/health", async () => ({ ok: true, service: "cervel-node-alpha", cortex: "semantic-intelligence-v0.1", trace_ui: true }));
-
-app.post("/v1/objects", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const body = request.body as { node_id: string; workspace_id: string; type: string; title: string; summary?: string; languages?: string[]; jurisdictions?: string[] };
-  const result = await withTransaction(async (client) => {
-    await assertPrincipalInNode(client, principalId, body.node_id);
-    const node = await client.query(`SELECT slug FROM nodes WHERE id = $1`, [body.node_id]);
-    if (node.rowCount !== 1) throw Object.assign(new Error("NODE_NOT_FOUND"), { statusCode: 404 });
-    return createKnowledgeObject(client, { nodeId: body.node_id, workspaceId: body.workspace_id, type: body.type, title: body.title, summary: body.summary ?? null, languages: body.languages ?? [], jurisdictions: body.jurisdictions ?? [], createdBy: principalId, nodeAuthority: node.rows[0].slug });
-  });
-  return reply.code(201).send(result);
-});
-
-app.get("/v1/objects/:id", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const result = await withTransaction(async (client) => {
-    const row = await client.query(`SELECT ko.*, n.slug AS node_authority FROM knowledge_objects ko JOIN nodes n ON n.id = ko.node_id WHERE ko.id = $1 AND ko.lifecycle_status <> 'deleted'`, [id]);
-    if (row.rowCount !== 1) throw Object.assign(new Error("CKO_NOT_FOUND"), { statusCode: 404 });
-    await assertPrincipalInNode(client, principalId, row.rows[0].node_id);
-    return { ...row.rows[0], canonical_uri: canonicalCKURI(row.rows[0].node_authority, id) };
-  });
-  return reply.send(result);
-});
-
-app.post("/v1/objects/:id/artifacts", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id: ckoId } = request.params as { id: string };
-  const body = request.body as { storage_location_id: string; filename: string; mime_type: string; content_base64: string; role?: "original" | "snapshot" | "extracted_text" | "thumbnail" | "translation" | "transcript" | "structured" | "derived" };
-  const bytes = Buffer.from(body.content_base64, "base64");
-  const result = await withTransaction(async (client) => {
-    const cko = await client.query(`SELECT node_id FROM knowledge_objects WHERE id = $1`, [ckoId]);
-    if (cko.rowCount !== 1) throw Object.assign(new Error("CKO_NOT_FOUND"), { statusCode: 404 });
-    const nodeId = cko.rows[0].node_id as string;
-    await assertPrincipalInNode(client, principalId, nodeId);
-    const artifact = await registerArtifact(client, { nodeId, ckoId, storageLocationId: body.storage_location_id, role: body.role, mimeType: body.mime_type, filename: body.filename, bytes, actorPrincipalId: principalId });
-    const ingestion = await ingestTextArtifact(client, { nodeId, ckoId, artifactId: artifact.id, mimeType: body.mime_type, bytes, actorPrincipalId: principalId });
-    const embedded = ingestion.ingested ? await embedMissingFragments(client, nodeId, ckoId) : 0;
-    return { artifact, ingestion, embeddings_created: embedded };
-  });
-  return reply.code(201).send(result);
-});
-
-app.get("/v1/objects/:id/fragments", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const result = await withTransaction(async (client) => {
-    const cko = await client.query(`SELECT node_id FROM knowledge_objects WHERE id = $1`, [id]);
-    if (cko.rowCount !== 1) throw Object.assign(new Error("CKO_NOT_FOUND"), { statusCode: 404 });
-    await assertPrincipalInNode(client, principalId, cko.rows[0].node_id);
-    return client.query(`SELECT * FROM fragments WHERE cko_id = $1 ORDER BY ordinal`, [id]);
-  });
-  return reply.send(result.rows);
-});
-
-app.get("/v1/objects/:id/provenance", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const result = await withTransaction(async (client) => {
-    const cko = await client.query(`SELECT node_id FROM knowledge_objects WHERE id = $1`, [id]);
-    if (cko.rowCount !== 1) throw Object.assign(new Error("CKO_NOT_FOUND"), { statusCode: 404 });
-    await assertPrincipalInNode(client, principalId, cko.rows[0].node_id);
-    return client.query(`SELECT pe.*, pio.io_role, pio.resource_type, pio.resource_id, pio.sha256, pio.ordinal FROM provenance_events pe JOIN provenance_io pio ON pio.provenance_event_id = pe.id WHERE EXISTS (SELECT 1 FROM provenance_io x WHERE x.provenance_event_id = pe.id AND x.resource_type = 'cko' AND x.resource_id = $1) OR EXISTS (SELECT 1 FROM artifacts a WHERE a.cko_id = $1 AND pio.resource_type = 'artifact' AND pio.resource_id = a.id) OR EXISTS (SELECT 1 FROM fragments f WHERE f.cko_id = $1 AND pio.resource_type = 'fragment' AND pio.resource_id = f.id) ORDER BY pe.occurred_at, pio.ordinal`, [id]);
-  });
-  return reply.send(result.rows);
-});
-
-app.get("/v1/resolve", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { uri } = request.query as { uri?: string };
-  if (!uri) return reply.code(400).send({ error: "URI_REQUIRED" });
-  const parsed = parseCKURI(uri);
-  const result = await withTransaction(async (client) => {
-    const node = await client.query(`SELECT id, slug FROM nodes WHERE lower(slug) = lower($1)`, [parsed.authority]);
-    if (node.rowCount !== 1) throw Object.assign(new Error("NODE_NOT_FOUND"), { statusCode: 404 });
-    await assertPrincipalInNode(client, principalId, node.rows[0].id);
-    let ckoId = parsed.canonicalId;
-    if (!ckoId && parsed.aliasPath) {
-      const alias = await client.query(`SELECT cko_id FROM object_aliases WHERE node_id = $1 AND alias_path = $2 AND is_active = true`, [node.rows[0].id, parsed.aliasPath]);
-      if (alias.rowCount !== 1) throw Object.assign(new Error("ALIAS_NOT_FOUND"), { statusCode: 404 });
-      ckoId = alias.rows[0].cko_id;
-    }
-    const object = await client.query(`SELECT * FROM knowledge_objects WHERE id = $1 AND node_id = $2`, [ckoId, node.rows[0].id]);
-    if (object.rowCount !== 1) throw Object.assign(new Error("CKO_NOT_FOUND"), { statusCode: 404 });
-    if (parsed.fragment?.kind === "frag") {
-      const fragment = await client.query(`SELECT * FROM fragments WHERE id = $1 AND cko_id = $2`, [parsed.fragment.value, ckoId]);
-      if (fragment.rowCount !== 1) throw Object.assign(new Error("FRAGMENT_NOT_FOUND"), { statusCode: 404 });
-      return { canonical_uri: `${canonicalCKURI(node.rows[0].slug, ckoId!)}#frag/${parsed.fragment.value}`, resource_type: "fragment", representation: fragment.rows[0] };
-    }
-    return { canonical_uri: canonicalCKURI(node.rows[0].slug, ckoId!), resource_type: "cko", representation: object.rows[0] };
-  });
-  return reply.send(result);
-});
-
-app.post("/v1/embeddings/reindex", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const body = request.body as { node_id: string; cko_id?: string };
-  const count = await withTransaction(async (client) => {
-    await assertPrincipalInNode(client, principalId, body.node_id);
-    return embedMissingFragments(client, body.node_id, body.cko_id);
-  });
-  return reply.send({ embeddings_created: count });
-});
-
-app.post("/v1/search", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const body = request.body as { node_id: string; workspace_id?: string; query: string; library_ids?: string[]; limit?: number };
-  const result = await withTransaction(async (client) => {
-    const scope = await resolveRetrievalScope(client, { nodeId: body.node_id, principalId, workspaceId: body.workspace_id ?? null, requestedLibraryIds: body.library_ids ?? [] });
-    return hybridRetrieve(client, scope, body.query, body.limit ?? 12);
-  });
-  return reply.send({ results: result });
-});
-
-app.post("/v1/context", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const body = request.body as { node_id: string; workspace_id?: string; query: string; task_type?: string; profile?: string; as_of?: string; library_ids?: string[]; max_evidence_items?: number };
-  const ccp = await withTransaction((client) => assembleContextPackage(client, { nodeId: body.node_id, workspaceId: body.workspace_id ?? null, principalId, query: body.query, taskType: body.task_type, profile: body.profile, asOf: body.as_of ?? null, libraryIds: body.library_ids ?? [], maxEvidenceItems: body.max_evidence_items }));
-  return reply.code(201).send(ccp);
-});
-
-app.get("/v1/context/:id", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const result = await withTransaction(async (client) => {
-    const ccp = await client.query(`SELECT * FROM context_packages WHERE id = $1`, [id]);
-    if (ccp.rowCount !== 1) throw Object.assign(new Error("CCP_NOT_FOUND"), { statusCode: 404 });
-    if (ccp.rows[0].principal_id !== principalId) throw Object.assign(new Error("FORBIDDEN_CONTEXT_SCOPE"), { statusCode: 403 });
-    const evidence = await client.query(`SELECT * FROM context_evidence WHERE context_package_id = $1 ORDER BY evidence_role, ordinal`, [id]);
-    const claims = await client.query(`SELECT c.* FROM context_claims cc JOIN claims c ON c.id=cc.claim_id WHERE cc.context_package_id=$1 ORDER BY c.created_at`, [id]);
-    return { ...ccp.rows[0], evidence: evidence.rows, claims: claims.rows };
-  });
-  return reply.send(result);
-});
-
-app.post("/v1/context/:id/semantic", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const result = await withTransaction(async (client) => {
-    const claims = await enrichContextSemantics(client, id, principalId);
-    const conflicts = await detectTemporalScopeConflicts(client, id, principalId);
-    const graph = await multiHopGraphReasoning(client, id, principalId, 3);
-    const confidence = await synthesizeContextConfidence(client, id);
-    return { claims, conflicts, graph, confidence };
-  });
-  return reply.code(201).send(result);
-});
-
-app.post("/v1/context/:id/reason", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const result = await withTransaction((client) => executeSemanticKnowledgeReasoning(client, id, principalId));
-  return reply.code(201).send(result);
-});
-
-app.post("/v1/reason", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const body = request.body as { node_id: string; workspace_id?: string; query: string; task_type?: string; profile?: string; as_of?: string; library_ids?: string[]; max_evidence_items?: number };
-  const result = await withTransaction(async (client) => {
-    const ccp = await assembleContextPackage(client, { nodeId: body.node_id, workspaceId: body.workspace_id ?? null, principalId, query: body.query, taskType: body.task_type, profile: body.profile, asOf: body.as_of ?? null, libraryIds: body.library_ids ?? [], maxEvidenceItems: body.max_evidence_items });
-    return executeSemanticKnowledgeReasoning(client, ccp.id, principalId);
-  });
-  return reply.code(201).send(result);
-});
-
-app.get("/v1/answers/:id", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const answer = await withTransaction(async (client) => {
-    const result = await client.query(`SELECT * FROM answers WHERE id=$1`, [id]);
-    if (result.rowCount !== 1) throw Object.assign(new Error("ANSWER_NOT_FOUND"), { statusCode: 404 });
-    if (result.rows[0].principal_id !== principalId) throw Object.assign(new Error("FORBIDDEN_ANSWER_SCOPE"), { statusCode: 403 });
-    return result.rows[0];
-  });
-  return reply.send(answer);
-});
-
-app.get("/v1/answers/:id/trace", async (request, reply) => {
-  const principalId = requiredHeaderPrincipal(request as never);
-  const { id } = request.params as { id: string };
-  const trace = await withTransaction((client) => loadAnswerTrace(client, id, principalId));
-  return reply.send(trace);
-});
-
-app.get("/trace/:id", async (request, reply) => {
-  const { id } = request.params as { id: string };
-  return reply.type("text/html; charset=utf-8").send(renderTraceUI(id));
-});
-
-app.setErrorHandler((error, _request, reply) => {
-  const normalized = error instanceof Error ? error : new Error(String(error));
-  const status = (normalized as Error & { statusCode?: number }).statusCode ?? 500;
-  reply.code(status).send({ error: normalized.message });
-});
-
-const port = Number(process.env.PORT ?? 8787);
-app.listen({ host: "0.0.0.0", port }).catch(async (error: unknown) => {
-  const normalized = error instanceof Error ? error : new Error(String(error));
-  app.log.error(normalized);
-  await db.end();
-  process.exit(1);
-});
+app.get("/health", async () => ({ ok: true, service: "cervel-node-alpha", cortex: "semantic-intelligence-v0.1", trace_ui: true, workspace_alpha: true }));
+app.post("/v1/objects", async (request, reply) => { const principalId=requiredHeaderPrincipal(request as never); const body=request.body as {node_id:string;workspace_id:string;type:string;title:string;summary?:string;languages?:string[];jurisdictions?:string[]}; const result=await withTransaction(async client=>{await assertPrincipalInNode(client,principalId,body.node_id);const node=await client.query(`SELECT slug FROM nodes WHERE id=$1`,[body.node_id]);if(node.rowCount!==1)throw Object.assign(new Error("NODE_NOT_FOUND"),{statusCode:404});return createKnowledgeObject(client,{nodeId:body.node_id,workspaceId:body.workspace_id,type:body.type,title:body.title,summary:body.summary??null,languages:body.languages??[],jurisdictions:body.jurisdictions??[],createdBy:principalId,nodeAuthority:node.rows[0].slug});});return reply.code(201).send(result);});
+app.get("/v1/objects/:id",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};const result=await withTransaction(async client=>{const row=await client.query(`SELECT ko.*,n.slug AS node_authority FROM knowledge_objects ko JOIN nodes n ON n.id=ko.node_id WHERE ko.id=$1 AND ko.lifecycle_status<>'deleted'`,[id]);if(row.rowCount!==1)throw Object.assign(new Error("CKO_NOT_FOUND"),{statusCode:404});await assertPrincipalInNode(client,principalId,row.rows[0].node_id);return {...row.rows[0],canonical_uri:canonicalCKURI(row.rows[0].node_authority,id)};});return reply.send(result);});
+app.post("/v1/objects/:id/artifacts",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id:ckoId}=request.params as {id:string};const body=request.body as {storage_location_id:string;filename:string;mime_type:string;content_base64:string;role?:"original"|"snapshot"|"extracted_text"|"thumbnail"|"translation"|"transcript"|"structured"|"derived"};const bytes=Buffer.from(body.content_base64,"base64");const result=await withTransaction(async client=>{const cko=await client.query(`SELECT node_id FROM knowledge_objects WHERE id=$1`,[ckoId]);if(cko.rowCount!==1)throw Object.assign(new Error("CKO_NOT_FOUND"),{statusCode:404});const nodeId=cko.rows[0].node_id as string;await assertPrincipalInNode(client,principalId,nodeId);const artifact=await registerArtifact(client,{nodeId,ckoId,storageLocationId:body.storage_location_id,role:body.role,mimeType:body.mime_type,filename:body.filename,bytes,actorPrincipalId:principalId});const ingestion=await ingestTextArtifact(client,{nodeId,ckoId,artifactId:artifact.id,mimeType:body.mime_type,bytes,actorPrincipalId:principalId});const embedded=ingestion.ingested?await embedMissingFragments(client,nodeId,ckoId):0;return {artifact,ingestion,embeddings_created:embedded};});return reply.code(201).send(result);});
+app.get("/v1/objects/:id/fragments",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};const result=await withTransaction(async client=>{const cko=await client.query(`SELECT node_id FROM knowledge_objects WHERE id=$1`,[id]);if(cko.rowCount!==1)throw Object.assign(new Error("CKO_NOT_FOUND"),{statusCode:404});await assertPrincipalInNode(client,principalId,cko.rows[0].node_id);return client.query(`SELECT * FROM fragments WHERE cko_id=$1 ORDER BY ordinal`,[id]);});return reply.send(result.rows);});
+app.get("/v1/objects/:id/provenance",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};const result=await withTransaction(async client=>{const cko=await client.query(`SELECT node_id FROM knowledge_objects WHERE id=$1`,[id]);if(cko.rowCount!==1)throw Object.assign(new Error("CKO_NOT_FOUND"),{statusCode:404});await assertPrincipalInNode(client,principalId,cko.rows[0].node_id);return client.query(`SELECT pe.*,pio.io_role,pio.resource_type,pio.resource_id,pio.sha256,pio.ordinal FROM provenance_events pe JOIN provenance_io pio ON pio.provenance_event_id=pe.id WHERE EXISTS(SELECT 1 FROM provenance_io x WHERE x.provenance_event_id=pe.id AND x.resource_type='cko' AND x.resource_id=$1) OR EXISTS(SELECT 1 FROM artifacts a WHERE a.cko_id=$1 AND pio.resource_type='artifact' AND pio.resource_id=a.id) OR EXISTS(SELECT 1 FROM fragments f WHERE f.cko_id=$1 AND pio.resource_type='fragment' AND pio.resource_id=f.id) ORDER BY pe.occurred_at,pio.ordinal`,[id]);});return reply.send(result.rows);});
+app.get("/v1/resolve",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{uri}=request.query as {uri?:string};if(!uri)return reply.code(400).send({error:"URI_REQUIRED"});const parsed=parseCKURI(uri);const result=await withTransaction(async client=>{const node=await client.query(`SELECT id,slug FROM nodes WHERE lower(slug)=lower($1)`,[parsed.authority]);if(node.rowCount!==1)throw Object.assign(new Error("NODE_NOT_FOUND"),{statusCode:404});await assertPrincipalInNode(client,principalId,node.rows[0].id);let ckoId=parsed.canonicalId;if(!ckoId&&parsed.aliasPath){const alias=await client.query(`SELECT cko_id FROM object_aliases WHERE node_id=$1 AND alias_path=$2 AND is_active=true`,[node.rows[0].id,parsed.aliasPath]);if(alias.rowCount!==1)throw Object.assign(new Error("ALIAS_NOT_FOUND"),{statusCode:404});ckoId=alias.rows[0].cko_id;}const object=await client.query(`SELECT * FROM knowledge_objects WHERE id=$1 AND node_id=$2`,[ckoId,node.rows[0].id]);if(object.rowCount!==1)throw Object.assign(new Error("CKO_NOT_FOUND"),{statusCode:404});if(parsed.fragment?.kind==="frag"){const fragment=await client.query(`SELECT * FROM fragments WHERE id=$1 AND cko_id=$2`,[parsed.fragment.value,ckoId]);if(fragment.rowCount!==1)throw Object.assign(new Error("FRAGMENT_NOT_FOUND"),{statusCode:404});return {canonical_uri:`${canonicalCKURI(node.rows[0].slug,ckoId!)}#frag/${parsed.fragment.value}`,resource_type:"fragment",representation:fragment.rows[0]};}return {canonical_uri:canonicalCKURI(node.rows[0].slug,ckoId!),resource_type:"cko",representation:object.rows[0]};});return reply.send(result);});
+app.post("/v1/embeddings/reindex",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),body=request.body as {node_id:string;cko_id?:string};const count=await withTransaction(async client=>{await assertPrincipalInNode(client,principalId,body.node_id);return embedMissingFragments(client,body.node_id,body.cko_id);});return reply.send({embeddings_created:count});});
+app.post("/v1/search",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),body=request.body as {node_id:string;workspace_id?:string;query:string;library_ids?:string[];limit?:number};const result=await withTransaction(async client=>{const scope=await resolveRetrievalScope(client,{nodeId:body.node_id,principalId,workspaceId:body.workspace_id??null,requestedLibraryIds:body.library_ids??[]});return hybridRetrieve(client,scope,body.query,body.limit??12);});return reply.send({results:result});});
+app.post("/v1/context",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),body=request.body as {node_id:string;workspace_id?:string;query:string;task_type?:string;profile?:string;as_of?:string;library_ids?:string[];max_evidence_items?:number};const ccp=await withTransaction(client=>assembleContextPackage(client,{nodeId:body.node_id,workspaceId:body.workspace_id??null,principalId,query:body.query,taskType:body.task_type,profile:body.profile,asOf:body.as_of??null,libraryIds:body.library_ids??[],maxEvidenceItems:body.max_evidence_items}));return reply.code(201).send(ccp);});
+app.get("/v1/context/:id",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};const result=await withTransaction(async client=>{const ccp=await client.query(`SELECT * FROM context_packages WHERE id=$1`,[id]);if(ccp.rowCount!==1)throw Object.assign(new Error("CCP_NOT_FOUND"),{statusCode:404});if(ccp.rows[0].principal_id!==principalId)throw Object.assign(new Error("FORBIDDEN_CONTEXT_SCOPE"),{statusCode:403});const evidence=await client.query(`SELECT * FROM context_evidence WHERE context_package_id=$1 ORDER BY evidence_role,ordinal`,[id]);const claims=await client.query(`SELECT c.* FROM context_claims cc JOIN claims c ON c.id=cc.claim_id WHERE cc.context_package_id=$1 ORDER BY c.created_at`,[id]);return {...ccp.rows[0],evidence:evidence.rows,claims:claims.rows};});return reply.send(result);});
+app.post("/v1/context/:id/semantic",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};const result=await withTransaction(async client=>{const claims=await enrichContextSemantics(client,id,principalId),conflicts=await detectTemporalScopeConflicts(client,id,principalId),graph=await multiHopGraphReasoning(client,id,principalId,3),confidence=await synthesizeContextConfidence(client,id);return {claims,conflicts,graph,confidence};});return reply.code(201).send(result);});
+app.post("/v1/context/:id/reason",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};return reply.code(201).send(await withTransaction(client=>executeSemanticKnowledgeReasoning(client,id,principalId)));});
+app.post("/v1/reason",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),body=request.body as {node_id:string;workspace_id?:string;query:string;task_type?:string;profile?:string;as_of?:string;library_ids?:string[];max_evidence_items?:number};const result=await withTransaction(async client=>{const ccp=await assembleContextPackage(client,{nodeId:body.node_id,workspaceId:body.workspace_id??null,principalId,query:body.query,taskType:body.task_type,profile:body.profile,asOf:body.as_of??null,libraryIds:body.library_ids??[],maxEvidenceItems:body.max_evidence_items});return executeSemanticKnowledgeReasoning(client,ccp.id,principalId);});return reply.code(201).send(result);});
+app.get("/v1/answers/:id",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};const answer=await withTransaction(async client=>{const result=await client.query(`SELECT * FROM answers WHERE id=$1`,[id]);if(result.rowCount!==1)throw Object.assign(new Error("ANSWER_NOT_FOUND"),{statusCode:404});if(result.rows[0].principal_id!==principalId)throw Object.assign(new Error("FORBIDDEN_ANSWER_SCOPE"),{statusCode:403});return result.rows[0];});return reply.send(answer);});
+app.get("/v1/answers/:id/trace",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};return reply.send(await withTransaction(client=>loadAnswerTrace(client,id,principalId)));});
+app.get("/trace/:id",async(request,reply)=>{const {id}=request.params as {id:string};return reply.type("text/html; charset=utf-8").send(renderTraceUI(id));});
+app.setErrorHandler((error,_request,reply)=>{const normalized=error instanceof Error?error:new Error(String(error));const status=(normalized as Error&{statusCode?:number}).statusCode??500;reply.code(status).send({error:normalized.message});});
+const port=Number(process.env.PORT??8787);app.listen({host:"0.0.0.0",port}).catch(async(error:unknown)=>{const normalized=error instanceof Error?error:new Error(String(error));app.log.error(normalized);await db.end();process.exit(1);});

@@ -8,7 +8,10 @@ import { assertPrincipalInNode } from "./access";
 import { embedMissingFragments } from "./embeddings";
 import { hybridRetrieve, resolveRetrievalScope } from "./retrieval";
 import { assembleContextPackage } from "./context";
-import { executeContextReasoning, loadAnswerTrace } from "./reasoning";
+import { loadAnswerTrace } from "./reasoning";
+import { executeSemanticKnowledgeReasoning } from "./semantic-reasoning";
+import { enrichContextSemantics, detectTemporalScopeConflicts, multiHopGraphReasoning, synthesizeContextConfidence } from "./semantic";
+import { renderTraceUI } from "./trace-ui";
 
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
 
@@ -22,7 +25,7 @@ function requiredHeaderPrincipal(request: { headers: Record<string, unknown> }):
   return raw;
 }
 
-app.get("/health", async () => ({ ok: true, service: "cervel-node-alpha", cortex: "reasoning-trace-v0.1" }));
+app.get("/health", async () => ({ ok: true, service: "cervel-node-alpha", cortex: "semantic-intelligence-v0.1", trace_ui: true }));
 
 app.post("/v1/objects", async (request, reply) => {
   const principalId = requiredHeaderPrincipal(request as never);
@@ -158,10 +161,23 @@ app.get("/v1/context/:id", async (request, reply) => {
   return reply.send(result);
 });
 
+app.post("/v1/context/:id/semantic", async (request, reply) => {
+  const principalId = requiredHeaderPrincipal(request as never);
+  const { id } = request.params as { id: string };
+  const result = await withTransaction(async (client) => {
+    const claims = await enrichContextSemantics(client, id, principalId);
+    const conflicts = await detectTemporalScopeConflicts(client, id, principalId);
+    const graph = await multiHopGraphReasoning(client, id, principalId, 3);
+    const confidence = await synthesizeContextConfidence(client, id);
+    return { claims, conflicts, graph, confidence };
+  });
+  return reply.code(201).send(result);
+});
+
 app.post("/v1/context/:id/reason", async (request, reply) => {
   const principalId = requiredHeaderPrincipal(request as never);
   const { id } = request.params as { id: string };
-  const result = await withTransaction((client) => executeContextReasoning(client, id, principalId));
+  const result = await withTransaction((client) => executeSemanticKnowledgeReasoning(client, id, principalId));
   return reply.code(201).send(result);
 });
 
@@ -170,7 +186,7 @@ app.post("/v1/reason", async (request, reply) => {
   const body = request.body as { node_id: string; workspace_id?: string; query: string; task_type?: string; profile?: string; as_of?: string; library_ids?: string[]; max_evidence_items?: number };
   const result = await withTransaction(async (client) => {
     const ccp = await assembleContextPackage(client, { nodeId: body.node_id, workspaceId: body.workspace_id ?? null, principalId, query: body.query, taskType: body.task_type, profile: body.profile, asOf: body.as_of ?? null, libraryIds: body.library_ids ?? [], maxEvidenceItems: body.max_evidence_items });
-    return executeContextReasoning(client, ccp.id, principalId);
+    return executeSemanticKnowledgeReasoning(client, ccp.id, principalId);
   });
   return reply.code(201).send(result);
 });
@@ -192,6 +208,11 @@ app.get("/v1/answers/:id/trace", async (request, reply) => {
   const { id } = request.params as { id: string };
   const trace = await withTransaction((client) => loadAnswerTrace(client, id, principalId));
   return reply.send(trace);
+});
+
+app.get("/trace/:id", async (request, reply) => {
+  const { id } = request.params as { id: string };
+  return reply.type("text/html; charset=utf-8").send(renderTraceUI(id));
 });
 
 app.setErrorHandler((error, _request, reply) => {

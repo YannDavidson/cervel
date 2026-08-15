@@ -12,7 +12,10 @@ CREATE TABLE entities (
 );
 
 CREATE INDEX entities_name_fts_idx
-  ON entities USING gin (to_tsvector('simple', canonical_name || ' ' || array_to_string(aliases,' ')));
+  ON entities USING gin (to_tsvector('simple', canonical_name));
+
+CREATE INDEX entities_aliases_gin_idx
+  ON entities USING gin (aliases);
 
 CREATE TABLE relationships (
   id uuid PRIMARY KEY,

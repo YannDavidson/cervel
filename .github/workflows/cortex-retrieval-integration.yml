@@ -87,7 +87,7 @@ jobs:
           CCP_ID=$(echo "$CCP" | jq -r .id)
           test "$(echo "$CCP" | jq -r .ccp_version)" = "0.1"
           test "$(echo "$CCP" | jq '.evidence.primary | length')" -gt 0
-          test "$(echo "$CCP" | jq -r .authorization_scope.policy_snapshot_hash | length)" -eq 64
+          test "$(echo "$CCP" | jq -r '.authorization_scope.policy_snapshot_hash | length')" -eq 64
           test "$(echo "$CCP" | jq '.trace.provenance_event_ids | length')" -eq 1
 
           STORED=$(curl -fsS "http://localhost:8787/v1/context/$CCP_ID" -H "x-cervel-principal-id: $PRINCIPAL_ID")

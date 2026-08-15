@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS answers (
   node_id uuid NOT NULL REFERENCES nodes(id),
   workspace_id uuid REFERENCES workspaces(id),
   principal_id uuid NOT NULL REFERENCES principals(id),
-  context_package_id uuid NOT NULL REFERENCES context_packages(id) ON DELETE CASCADE,
+  context_package_id uuid NOT NULL REFERENCES context_packages(id) ON DELETE RESTRICT,
   model_run_id uuid REFERENCES model_runs(id),
   answer_text text NOT NULL,
   citations jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS answers (
 
 CREATE TABLE IF NOT EXISTS answer_claims (
   answer_id uuid NOT NULL REFERENCES answers(id) ON DELETE CASCADE,
-  claim_id uuid NOT NULL REFERENCES claims(id),
+  claim_id uuid NOT NULL REFERENCES claims(id) ON DELETE RESTRICT,
   role text NOT NULL CHECK (role IN ('supporting','conflicting','mentioned')),
   ordinal integer NOT NULL DEFAULT 0,
   PRIMARY KEY(answer_id, claim_id, role)

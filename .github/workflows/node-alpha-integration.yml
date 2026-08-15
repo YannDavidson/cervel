@@ -1,0 +1,156 @@
+name: Node Alpha Integration
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-alpha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cervel
+          POSTGRES_PASSWORD: cervel
+          POSTGRES_DB: cervel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: 8787
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test -- --runInBand
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name cervel-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=cervel \
+            -e MINIO_ROOT_PASSWORD=change-me-now \
+            minio/minio:latest server /data
+          for i in {1..30}; do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs cervel-minio
+          exit 1
+
+      - name: Run migrations twice
+        run: |
+          npm run db:migrate
+          npm run db:migrate
+
+      - name: Bootstrap node twice and verify idempotence
+        run: |
+          npm run --silent db:bootstrap > /tmp/bootstrap-1.json
+          npm run --silent db:bootstrap > /tmp/bootstrap-2.json
+          diff -u /tmp/bootstrap-1.json /tmp/bootstrap-2.json
+          cat /tmp/bootstrap-1.json
+
+      - name: Start API
+        run: |
+          npm run dev:api > /tmp/cervel-api.log 2>&1 &
+          echo $! > /tmp/cervel-api.pid
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8787/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/cervel-api.log
+          exit 1
+
+      - name: Exercise CKO artifact ingestion CKURI and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap-1.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap-1.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap-1.json)
+          STORAGE_ID=$(jq -r .storageLocationId /tmp/bootstrap-1.json)
+
+          CREATE=$(curl -fsS -X POST http://localhost:8787/v1/objects \
+            -H 'content-type: application/json' \
+            -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"type\":\"note\",\"title\":\"CERVEL Alpha Integration\",\"languages\":[\"en\"]}")
+          echo "$CREATE" | jq .
+          CKO_ID=$(echo "$CREATE" | jq -r .id)
+          CKURI=$(echo "$CREATE" | jq -r .canonical_uri)
+          test "$CKURI" = "cervel://local/cko/$CKO_ID"
+
+          CONTENT=$(printf '# CERVEL Alpha\n\nKnowledge has identity.\n\nProvenance makes it traceable.' | base64 -w0)
+          ARTIFACT=$(curl -fsS -X POST "http://localhost:8787/v1/objects/$CKO_ID/artifacts" \
+            -H 'content-type: application/json' \
+            -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"storage_location_id\":\"$STORAGE_ID\",\"filename\":\"alpha.md\",\"mime_type\":\"text/markdown\",\"content_base64\":\"$CONTENT\"}")
+          echo "$ARTIFACT" | jq .
+          test "$(echo "$ARTIFACT" | jq -r .ingestion.ingested)" = "true"
+          test "$(echo "$ARTIFACT" | jq '.ingestion.fragments | length')" -eq 3
+
+          FRAGMENTS=$(curl -fsS "http://localhost:8787/v1/objects/$CKO_ID/fragments" -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          test "$(echo "$FRAGMENTS" | jq 'length')" -eq 3
+          FRAGMENT_ID=$(echo "$FRAGMENTS" | jq -r '.[1].id')
+
+          RESOLVED=$(curl -fsS --get http://localhost:8787/v1/resolve \
+            --data-urlencode "uri=$CKURI" \
+            -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          test "$(echo "$RESOLVED" | jq -r .resource_type)" = "cko"
+          test "$(echo "$RESOLVED" | jq -r .representation.id)" = "$CKO_ID"
+
+          RESOLVED_FRAGMENT=$(curl -fsS --get http://localhost:8787/v1/resolve \
+            --data-urlencode "uri=$CKURI#frag/$FRAGMENT_ID" \
+            -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          test "$(echo "$RESOLVED_FRAGMENT" | jq -r .resource_type)" = "fragment"
+          test "$(echo "$RESOLVED_FRAGMENT" | jq -r .representation.id)" = "$FRAGMENT_ID"
+
+          PROVENANCE=$(curl -fsS "http://localhost:8787/v1/objects/$CKO_ID/provenance" \
+            -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          echo "$PROVENANCE" | jq .
+          echo "$PROVENANCE" | jq -e 'map(.event_type) | index("created") != null' >/dev/null
+          echo "$PROVENANCE" | jq -e 'map(.event_type) | index("captured") != null' >/dev/null
+          echo "$PROVENANCE" | jq -e 'map(.event_type) | index("extracted") != null' >/dev/null
+
+          STATUS=$(curl -sS -o /tmp/denied.json -w '%{http_code}' "$CKURI" || true)
+          # The cervel:// scheme is not HTTP; actual unauthorized check follows through resolver.
+          STATUS=$(curl -sS -o /tmp/denied.json -w '%{http_code}' --get http://localhost:8787/v1/resolve \
+            --data-urlencode "uri=$CKURI" \
+            -H 'x-cervel-principal-id: 0198c3c3-5c31-7a11-8d1f-6e0d7f489999')
+          test "$STATUS" = "403"
+
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          cat /tmp/cervel-api.log || true
+          docker logs cervel-minio || true

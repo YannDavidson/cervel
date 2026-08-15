@@ -3,14 +3,27 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "dev:api": "tsx apps/api/src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start:api": "node dist/apps/api/src/server.js",
+    "db:migrate": "tsx scripts/db/migrate.ts",
+    "db:bootstrap": "tsx scripts/db/bootstrap.ts",
     "test": "jest",
     "test:contracts": "jest tests/contracts",
     "test:ckuri": "jest tests/ckuri"
   },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "fastify": "^5.0.0",
+    "pg": "^8.0.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.14",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
+    "tsx": "^4.0.0",
     "typescript": "^5.6.3"
   }
 }

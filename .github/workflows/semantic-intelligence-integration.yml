@@ -1,0 +1,99 @@
+name: Semantic Intelligence Integration
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-semantic-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cervel
+          POSTGRES_PASSWORD: cervel
+          POSTGRES_DB: cervel
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PORT: 8787
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL Semantic CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_REASONING_PROVIDER: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - name: Start MinIO
+        run: |
+          docker run -d --name cervel-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=cervel -e MINIO_ROOT_PASSWORD=change-me-now \
+            minio/minio:latest server /data
+          for i in {1..30}; do curl -fsS http://localhost:9000/minio/health/live >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Bootstrap runtime
+        run: |
+          npm run db:migrate
+          npm run --silent db:bootstrap > /tmp/bootstrap.json
+          npm run dev:api > /tmp/cervel-api.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://localhost:8787/health >/dev/null && exit 0; sleep 1; done
+          cat /tmp/cervel-api.log; exit 1
+      - name: Exercise semantic claims graph conflicts confidence and Trace UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          STORAGE_ID=$(jq -r .storageLocationId /tmp/bootstrap.json)
+
+          CREATE=$(curl -fsS -X POST http://localhost:8787/v1/objects \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"type\":\"note\",\"title\":\"Semantic Intelligence Fixture\"}")
+          CKO_ID=$(echo "$CREATE" | jq -r .id)
+          CONTENT=$(printf 'CERVEL uses PostgreSQL.\n\nCERVEL uses Neo4j.\n\nPostgreSQL supports pgvector.' | base64 -w0)
+          curl -fsS -X POST "http://localhost:8787/v1/objects/$CKO_ID/artifacts" \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"storage_location_id\":\"$STORAGE_ID\",\"filename\":\"semantic.md\",\"mime_type\":\"text/markdown\",\"content_base64\":\"$CONTENT\"}" >/tmp/artifact.json
+
+          REASON=$(curl -fsS -X POST http://localhost:8787/v1/reason \
+            -H 'content-type: application/json' -H "x-cervel-principal-id: $PRINCIPAL_ID" \
+            -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"What does CERVEL use and what supports pgvector?\",\"profile\":\"research\",\"max_evidence_items\":6}")
+          echo "$REASON" | jq .
+          ANSWER_ID=$(echo "$REASON" | jq -r .id)
+          CCP_ID=$(echo "$REASON" | jq -r .context_package_id)
+          test "$(echo "$REASON" | jq '.semantic.claims | length')" -ge 2
+          test "$(echo "$REASON" | jq '.semantic.conflicts | length')" -ge 1
+          test "$(echo "$REASON" | jq '.semantic.graph.claim_ids | length')" -ge 3
+          echo "$REASON" | jq -e '.semantic.confidence.final >= 0 and .semantic.confidence.final <= 1' >/dev/null
+          test "$(echo "$REASON" | jq -r .adapter.provider)" = "local"
+
+          SEMANTIC=$(curl -fsS -X POST "http://localhost:8787/v1/context/$CCP_ID/semantic" -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          echo "$SEMANTIC" | jq -e '.claims | length >= 2' >/dev/null
+          echo "$SEMANTIC" | jq -e '.graph.max_depth == 3' >/dev/null
+
+          TRACE=$(curl -fsS "http://localhost:8787/v1/answers/$ANSWER_ID/trace" -H "x-cervel-principal-id: $PRINCIPAL_ID")
+          echo "$TRACE" | jq -e '.chain | length >= 2' >/dev/null
+          HTML=$(curl -fsS "http://localhost:8787/trace/$ANSWER_ID")
+          echo "$HTML" | grep -q 'CERVEL'
+          echo "$HTML" | grep -q 'Answer → CCP → Claim → Evidence → Fragment → Artifact → Source'
+
+      - name: Show service logs on failure
+        if: failure()
+        run: cat /tmp/cervel-api.log || true

@@ -55,6 +55,20 @@ export function registerExperienceRoutes(app: FastifyInstance) {
     return reply.send(await withTransaction(client => setLibraryMembership(client, s, id, ckoId, false)));
   });
 
+  app.get("/v1/workspace/objects/:id/editor", async (request, reply) => {
+    const s = await session(request); const { id } = request.params as { id: string };
+    const result = await withTransaction(async client => {
+      const object = await client.query(`SELECT id,title,summary,object_version FROM knowledge_objects WHERE id=$1 AND node_id=$2 AND workspace_id=$3 AND lifecycle_status<>'deleted'`, [id, s.node_id, s.workspace_id]);
+      if (object.rowCount !== 1) throw Object.assign(new Error("CKO_NOT_FOUND"), { statusCode: 404 });
+      const [note, memberships] = await Promise.all([
+        client.query(`SELECT body,version,updated_at FROM object_notes WHERE cko_id=$1`, [id]),
+        client.query(`SELECT l.id,l.name FROM library_memberships lm JOIN libraries l ON l.id=lm.library_id WHERE lm.cko_id=$1 AND l.workspace_id=$2 ORDER BY l.name`, [id, s.workspace_id])
+      ]);
+      return { ...object.rows[0], note: note.rows[0]?.body ?? "", note_version: note.rows[0]?.version ?? 0, libraries: memberships.rows };
+    });
+    return reply.send(result);
+  });
+
   app.patch("/v1/workspace/objects/:id", async (request, reply) => {
     const s = await session(request); const { id } = request.params as { id: string };
     const body = request.body as { title?: string; summary?: string | null; note?: string };

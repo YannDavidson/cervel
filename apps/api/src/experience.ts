@@ -14,10 +14,40 @@ function scoped(session: Record<string, unknown>) {
   return { nodeId, principalId, workspaceId };
 }
 
+function maxCaptureBytes(): number {
+  const configured = Number(process.env.CERVEL_MAX_CAPTURE_BYTES ?? 5 * 1024 * 1024);
+  if (!Number.isFinite(configured) || configured < 1024) return 5 * 1024 * 1024;
+  return Math.min(configured, 100 * 1024 * 1024);
+}
+
+function validateCaptureInput(input: {
+  sourceType: "upload" | "clip" | "note"; contentBase64?: string; contentText?: string; sourceUrl?: string;
+}) {
+  const max = maxCaptureBytes();
+  if (input.sourceType === "upload" && !input.contentBase64) throw Object.assign(new Error("UPLOAD_CONTENT_REQUIRED"), { statusCode: 400 });
+  if ((input.sourceType === "clip" || input.sourceType === "note") && !input.contentText?.trim()) {
+    throw Object.assign(new Error("TEXT_CONTENT_REQUIRED"), { statusCode: 400 });
+  }
+  if (input.sourceType === "clip") {
+    if (!input.sourceUrl) throw Object.assign(new Error("CLIP_SOURCE_URL_REQUIRED"), { statusCode: 400 });
+    let parsed: URL;
+    try { parsed = new URL(input.sourceUrl); }
+    catch { throw Object.assign(new Error("CLIP_SOURCE_URL_INVALID"), { statusCode: 400 }); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw Object.assign(new Error("CLIP_SOURCE_URL_INVALID"), { statusCode: 400 });
+  }
+  if (input.contentBase64 && input.contentBase64.length > Math.ceil(max * 4 / 3) + 16) {
+    throw Object.assign(new Error("CAPTURE_TOO_LARGE"), { statusCode: 413 });
+  }
+  if (input.contentText && Buffer.byteLength(input.contentText, "utf8") > max) {
+    throw Object.assign(new Error("CAPTURE_TOO_LARGE"), { statusCode: 413 });
+  }
+}
+
 export async function captureKnowledge(client: PoolClient, session: Record<string, unknown>, input: {
   title: string; sourceType: "upload" | "clip" | "note"; type?: string; filename?: string;
   mimeType?: string; contentBase64?: string; contentText?: string; sourceUrl?: string; libraryIds?: string[];
 }) {
+  validateCaptureInput(input);
   const scope = scoped(session);
   const node = await client.query(`SELECT slug FROM nodes WHERE id=$1`, [scope.nodeId]);
   if (node.rowCount !== 1) throw Object.assign(new Error("NODE_NOT_FOUND"), { statusCode: 404 });
@@ -27,14 +57,15 @@ export async function captureKnowledge(client: PoolClient, session: Record<strin
      VALUES ($1,$2,$3,$4,$5,'queued',$6,$7,$8)`,
     [jobId, scope.nodeId, scope.workspaceId, scope.principalId, input.sourceType, input.filename ?? null, input.sourceUrl ?? null, input.mimeType ?? null]
   );
+  await client.query(`UPDATE capture_jobs SET status='processing',updated_at=now() WHERE id=$1`, [jobId]);
+  await client.query(`SAVEPOINT cervel_capture_work`);
   try {
-    await client.query(`UPDATE capture_jobs SET status='processing',updated_at=now() WHERE id=$1`, [jobId]);
     const object = await createKnowledgeObject(client, {
       nodeId: scope.nodeId, workspaceId: scope.workspaceId, type: input.type ?? (input.sourceType === "note" ? "note" : "document"),
       title: input.title, summary: input.sourceType === "clip" ? input.sourceUrl ?? null : null,
       createdBy: scope.principalId, nodeAuthority: node.rows[0].slug
     });
-    const libraryIds = input.libraryIds ?? [];
+    const libraryIds = [...new Set(input.libraryIds ?? [])];
     if (libraryIds.length) {
       const valid = await client.query(`SELECT id FROM libraries WHERE node_id=$1 AND workspace_id=$2 AND id=ANY($3::uuid[])`, [scope.nodeId, scope.workspaceId, libraryIds]);
       if (valid.rowCount !== libraryIds.length) throw Object.assign(new Error("LIBRARY_SCOPE_INVALID"), { statusCode: 403 });
@@ -42,6 +73,7 @@ export async function captureKnowledge(client: PoolClient, session: Record<strin
     }
     const text = input.contentText ?? "";
     const bytes = input.contentBase64 ? Buffer.from(input.contentBase64, "base64") : Buffer.from(text, "utf8");
+    if (bytes.length > maxCaptureBytes()) throw Object.assign(new Error("CAPTURE_TOO_LARGE"), { statusCode: 413 });
     if (bytes.length > 0) {
       const storage = await client.query(`SELECT id FROM storage_locations WHERE node_id=$1 ORDER BY is_primary DESC,created_at LIMIT 1`, [scope.nodeId]);
       if (storage.rowCount !== 1) throw Object.assign(new Error("STORAGE_LOCATION_REQUIRED"), { statusCode: 503 });
@@ -56,16 +88,22 @@ export async function captureKnowledge(client: PoolClient, session: Record<strin
     if (input.sourceType === "note") {
       await client.query(`INSERT INTO object_notes(id,cko_id,body,updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT(cko_id) DO UPDATE SET body=EXCLUDED.body,version=object_notes.version+1,updated_by=EXCLUDED.updated_by,updated_at=now()`, [uuidv7(), object.id, text, scope.principalId]);
     }
+    await client.query(`RELEASE SAVEPOINT cervel_capture_work`);
     await client.query(`UPDATE capture_jobs SET cko_id=$1,status='ready',updated_at=now(),completed_at=now() WHERE id=$2`, [object.id, jobId]);
-    return { job_id: jobId, status: "ready", object };
+    return { job_id: jobId, status: "ready" as const, object };
   } catch (error) {
-    await client.query(`UPDATE capture_jobs SET status='failed',error_message=$1,updated_at=now(),completed_at=now() WHERE id=$2`, [error instanceof Error ? error.message : String(error), jobId]);
-    throw error;
+    await client.query(`ROLLBACK TO SAVEPOINT cervel_capture_work`);
+    await client.query(`RELEASE SAVEPOINT cervel_capture_work`);
+    const message = error instanceof Error ? error.message : String(error);
+    await client.query(`UPDATE capture_jobs SET status='failed',error_message=$1,updated_at=now(),completed_at=now() WHERE id=$2`, [message, jobId]);
+    return { job_id: jobId, status: "failed" as const, error: message };
   }
 }
 
 export async function listInbox(client: PoolClient, session: Record<string, unknown>, status?: string) {
   const scope = scoped(session);
+  const allowedStatuses = new Set(["queued", "processing", "ready", "failed"]);
+  if (status && !allowedStatuses.has(status)) throw Object.assign(new Error("INBOX_STATUS_INVALID"), { statusCode: 400 });
   const result = await client.query(
     `SELECT cj.*,ko.title,ko.type,n.slug AS node_authority
        FROM capture_jobs cj LEFT JOIN knowledge_objects ko ON ko.id=cj.cko_id JOIN nodes n ON n.id=cj.node_id
@@ -116,6 +154,7 @@ export async function editObject(client: PoolClient, session: Record<string, unk
     [input.title?.trim() || null, Object.prototype.hasOwnProperty.call(input, "summary"), input.summary ?? null, id]
   );
   if (Object.prototype.hasOwnProperty.call(input, "note")) {
+    if (Buffer.byteLength(input.note ?? "", "utf8") > maxCaptureBytes()) throw Object.assign(new Error("NOTE_TOO_LARGE"), { statusCode: 413 });
     await client.query(`INSERT INTO object_notes(id,cko_id,body,updated_by) VALUES ($1,$2,$3,$4) ON CONFLICT(cko_id) DO UPDATE SET body=EXCLUDED.body,version=object_notes.version+1,updated_by=EXCLUDED.updated_by,updated_at=now()`, [uuidv7(), id, input.note ?? "", scope.principalId]);
   }
   const updated = await client.query(`SELECT ko.*,onote.body AS note,onote.version AS note_version FROM knowledge_objects ko LEFT JOIN object_notes onote ON onote.cko_id=ko.id WHERE ko.id=$1`, [id]);

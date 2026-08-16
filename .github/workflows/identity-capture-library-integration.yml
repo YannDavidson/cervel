@@ -57,6 +57,10 @@ jobs:
           docker logs cervel-minio; exit 1
       - run: npm run db:migrate
       - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Bind trusted identity scope
+        run: |
+          echo "CERVEL_AUTH_NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)" >> "$GITHUB_ENV"
+          echo "CERVEL_AUTH_WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)" >> "$GITHUB_ENV"
       - name: Start API
         run: |
           npm run dev:api > /tmp/cervel-api.log 2>&1 &
@@ -69,6 +73,12 @@ jobs:
           NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
           WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
           PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+
+          SCOPE_STATUS=$(curl -sS -o /tmp/scope.json -w '%{http_code}' -X POST http://localhost:8787/v1/auth/oidc/start \
+            -H 'content-type: application/json' \
+            -d '{"node_id":"0198c3c3-5c31-7a11-8d1f-6e0d7f489999"}')
+          test "$SCOPE_STATUS" = "403"
+
           SESSION=$(curl -fsS -X POST http://localhost:8787/v1/session -H 'content-type: application/json' -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"principal_id\":\"$PRINCIPAL_ID\"}")
           TOKEN=$(echo "$SESSION" | jq -r .token)
           AUTH="Authorization: Bearer $TOKEN"
@@ -82,6 +92,15 @@ jobs:
 
           INBOX=$(curl -fsS http://localhost:8787/v1/workspace/inbox -H "$AUTH")
           echo "$INBOX" | jq -e --arg id "$CKO_ID" 'map(select(.cko_id==$id and .status=="ready")) | length == 1' >/dev/null
+
+          FAILED_STATUS=$(curl -sS -o /tmp/failed-capture.json -w '%{http_code}' -X POST http://localhost:8787/v1/workspace/capture \
+            -H "$AUTH" -H 'content-type: application/json' \
+            -d '{"title":"Scoped failure","source_type":"note","content_text":"This job must persist as failed.","library_ids":["0198c3c3-5c31-7a11-8d1f-6e0d7f489998"]}')
+          test "$FAILED_STATUS" = "422"
+          FAILED_JOB=$(jq -r .job_id /tmp/failed-capture.json)
+          test "$(jq -r .status /tmp/failed-capture.json)" = "failed"
+          FAILED_INBOX=$(curl -fsS 'http://localhost:8787/v1/workspace/inbox?status=failed' -H "$AUTH")
+          echo "$FAILED_INBOX" | jq -e --arg id "$FAILED_JOB" 'map(select(.id==$id and .status=="failed")) | length == 1' >/dev/null
 
           EDIT=$(curl -fsS -X PATCH "http://localhost:8787/v1/workspace/objects/$CKO_ID" -H "$AUTH" -H 'content-type: application/json' -d '{"title":"CERVEL Edited Note","summary":"Editable owned knowledge","note":"Updated native note"}')
           test "$(echo "$EDIT" | jq -r .title)" = "CERVEL Edited Note"

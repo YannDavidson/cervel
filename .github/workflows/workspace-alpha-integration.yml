@@ -5,6 +5,7 @@ on:
       - 'apps/api/**'
       - 'apps/web/**'
       - 'db/migrations/**'
+      - 'scripts/validate-workspace-alpha.ts'
       - 'tests/**'
       - '.github/workflows/workspace-alpha-integration.yml'
 jobs:
@@ -24,11 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
+        with:
+          node-version: 22
+      - run: npm install
       - run: npm run build
       - run: npm test -- --runInBand
       - run: npm run db:migrate
+      - name: Validate session lifecycle and workspace scope
+        run: npx tsx scripts/validate-workspace-alpha.ts
       - name: Verify Workspace Alpha schema
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT token_hash, expires_at, revoked_at FROM workspace_sessions LIMIT 0;"

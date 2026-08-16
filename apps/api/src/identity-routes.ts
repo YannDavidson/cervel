@@ -30,8 +30,7 @@ async function currentSession(request: FastifyRequest) {
 export function registerIdentityRoutes(app: FastifyInstance) {
   app.post("/v1/auth/oidc/start", async (request, reply) => {
     const body = request.body as { node_id?: string; workspace_id?: string | null };
-    if (!body?.node_id) return reply.code(400).send({ error: "NODE_REQUIRED" });
-    const result = await withTransaction(client => startOidc(client, { nodeId: body.node_id!, workspaceId: body.workspace_id ?? null }));
+    const result = await withTransaction(client => startOidc(client, { nodeId: body?.node_id ?? null, workspaceId: body?.workspace_id ?? null }));
     return reply.send(result);
   });
 
@@ -58,22 +57,24 @@ export function registerIdentityRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/auth/passkeys/register/verify", async (request, reply) => {
-    await currentSession(request);
+    const session = await currentSession(request);
     const body = request.body as { challenge_id?: string; response?: unknown };
     if (!body?.challenge_id || !body.response) return reply.code(400).send({ error: "PASSKEY_CHALLENGE_AND_RESPONSE_REQUIRED" });
-    return reply.send(await withTransaction(client => verifyPasskeyRegistration(client, { challengeId: body.challenge_id!, response: body.response })));
+    return reply.send(await withTransaction(client => verifyPasskeyRegistration(client, {
+      challengeId: body.challenge_id!, response: body.response,
+      expectedNodeId: String(session.node_id), expectedPrincipalId: String(session.principal_id)
+    })));
   });
 
   app.post("/v1/auth/passkeys/authenticate/options", async (request, reply) => {
     const body = request.body as { node_id?: string; email?: string; principal_id?: string };
-    if (!body?.node_id) return reply.code(400).send({ error: "NODE_REQUIRED" });
-    return reply.send(await withTransaction(client => passkeyAuthenticationOptions(client, { nodeId: body.node_id!, email: body.email, principalId: body.principal_id })));
+    return reply.send(await withTransaction(client => passkeyAuthenticationOptions(client, { nodeId: body?.node_id ?? null, email: body?.email, principalId: body?.principal_id })));
   });
 
   app.post("/v1/auth/passkeys/authenticate/verify", async (request, reply) => {
-    const body = request.body as { challenge_id?: string; response?: unknown; workspace_id?: string | null };
+    const body = request.body as { challenge_id?: string; response?: unknown };
     if (!body?.challenge_id || !body.response) return reply.code(400).send({ error: "PASSKEY_CHALLENGE_AND_RESPONSE_REQUIRED" });
-    const result = await withTransaction(client => verifyPasskeyAuthentication(client, { challengeId: body.challenge_id!, response: body.response, workspaceId: body.workspace_id ?? null }));
+    const result = await withTransaction(client => verifyPasskeyAuthentication(client, { challengeId: body.challenge_id!, response: body.response }));
     setSessionCookie(reply, result.token);
     return reply.send({ authenticated: true, session: result.session });
   });

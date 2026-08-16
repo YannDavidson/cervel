@@ -20,6 +20,16 @@ function required(name: string): string {
   return value;
 }
 
+async function trustedAuthScope(client: PoolClient, requestedNodeId?: string | null, requestedWorkspaceId?: string | null) {
+  const nodeId = required("CERVEL_AUTH_NODE_ID");
+  const workspaceId = required("CERVEL_AUTH_WORKSPACE_ID");
+  if (requestedNodeId && requestedNodeId !== nodeId) throw Object.assign(new Error("AUTH_NODE_SCOPE_FORBIDDEN"), { statusCode: 403 });
+  if (requestedWorkspaceId && requestedWorkspaceId !== workspaceId) throw Object.assign(new Error("AUTH_WORKSPACE_SCOPE_FORBIDDEN"), { statusCode: 403 });
+  const workspace = await client.query(`SELECT 1 FROM workspaces WHERE id=$1 AND node_id=$2`, [workspaceId, nodeId]);
+  if (workspace.rowCount !== 1) throw Object.assign(new Error("AUTH_WORKSPACE_NOT_CONFIGURED"), { statusCode: 503 });
+  return { nodeId, workspaceId };
+}
+
 async function discovery(issuer: string) {
   const url = new URL(".well-known/openid-configuration", issuer.endsWith("/") ? issuer : issuer + "/");
   const response = await fetch(url);
@@ -27,18 +37,20 @@ async function discovery(issuer: string) {
   return response.json() as Promise<{ authorization_endpoint: string; token_endpoint: string; jwks_uri: string; issuer: string }>;
 }
 
-export async function startOidc(client: PoolClient, input: { nodeId: string; workspaceId?: string | null }) {
+export async function startOidc(client: PoolClient, input: { nodeId?: string | null; workspaceId?: string | null }) {
+  const scope = await trustedAuthScope(client, input.nodeId, input.workspaceId);
   const issuer = required("CERVEL_OIDC_ISSUER");
   const clientId = required("CERVEL_OIDC_CLIENT_ID");
   const redirectUri = required("CERVEL_OIDC_REDIRECT_URI");
   const config = await discovery(issuer);
   const state = b64url(randomBytes(24));
+  const nonce = b64url(randomBytes(24));
   const verifier = b64url(randomBytes(48));
   const id = uuidv7();
   await client.query(
     `INSERT INTO auth_challenges(id,node_id,workspace_id,kind,state,code_verifier,payload,expires_at)
      VALUES ($1,$2,$3,'oidc',$4,$5,$6::jsonb,$7)`,
-    [id, input.nodeId, input.workspaceId ?? null, state, verifier, JSON.stringify({ issuer: config.issuer }), new Date(Date.now() + AUTH_TTL_MS)]
+    [id, scope.nodeId, scope.workspaceId, state, verifier, JSON.stringify({ issuer: config.issuer, nonce }), new Date(Date.now() + AUTH_TTL_MS)]
   );
   const url = new URL(config.authorization_endpoint);
   url.searchParams.set("client_id", clientId);
@@ -46,16 +58,19 @@ export async function startOidc(client: PoolClient, input: { nodeId: string; wor
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
   url.searchParams.set("state", state);
+  url.searchParams.set("nonce", nonce);
   url.searchParams.set("code_challenge", sha256b64(verifier));
   url.searchParams.set("code_challenge_method", "S256");
   return { authorization_url: url.toString(), state };
 }
 
-async function consumeChallenge(client: PoolClient, kind: string, stateOrId: string) {
+async function consumeChallenge(client: PoolClient, kind: string, stateOrId: string, expected?: { nodeId?: string; principalId?: string }) {
   const result = await client.query(
     `UPDATE auth_challenges SET consumed_at=now()
       WHERE kind=$1 AND (state=$2 OR id::text=$2) AND consumed_at IS NULL AND expires_at>now()
-      RETURNING *`, [kind, stateOrId]
+        AND ($3::uuid IS NULL OR node_id=$3)
+        AND ($4::uuid IS NULL OR principal_id=$4)
+      RETURNING *`, [kind, stateOrId, expected?.nodeId ?? null, expected?.principalId ?? null]
   );
   if (result.rowCount !== 1) throw Object.assign(new Error("AUTH_CHALLENGE_INVALID"), { statusCode: 401 });
   return result.rows[0];
@@ -63,7 +78,10 @@ async function consumeChallenge(client: PoolClient, kind: string, stateOrId: str
 
 export async function finishOidc(client: PoolClient, input: { code: string; state: string }) {
   const challenge = await consumeChallenge(client, "oidc", input.state);
+  await trustedAuthScope(client, challenge.node_id, challenge.workspace_id);
   const issuer = String(challenge.payload?.issuer ?? required("CERVEL_OIDC_ISSUER"));
+  const nonce = String(challenge.payload?.nonce ?? "");
+  if (!nonce) throw Object.assign(new Error("OIDC_NONCE_MISSING"), { statusCode: 401 });
   const clientId = required("CERVEL_OIDC_CLIENT_ID");
   const redirectUri = required("CERVEL_OIDC_REDIRECT_URI");
   const config = await discovery(issuer);
@@ -89,6 +107,7 @@ export async function finishOidc(client: PoolClient, input: { code: string; stat
     audience: clientId
   });
   if (!payload.sub) throw Object.assign(new Error("OIDC_SUBJECT_MISSING"), { statusCode: 401 });
+  if (payload.nonce !== nonce) throw Object.assign(new Error("OIDC_NONCE_INVALID"), { statusCode: 401 });
   const externalSubject = `oidc:${config.issuer}:${payload.sub}`;
   let principal = await client.query(`SELECT id FROM principals WHERE node_id=$1 AND external_subject=$2`, [challenge.node_id, externalSubject]);
   let principalId: string;
@@ -153,9 +172,9 @@ export async function passkeyRegistrationOptions(client: PoolClient, input: { no
   return { challenge_id: id, options };
 }
 
-export async function verifyPasskeyRegistration(client: PoolClient, input: { challengeId: string; response: unknown }) {
+export async function verifyPasskeyRegistration(client: PoolClient, input: { challengeId: string; response: unknown; expectedNodeId: string; expectedPrincipalId: string }) {
   const rp = rpConfig();
-  const challenge = await consumeChallenge(client, "passkey_register", input.challengeId);
+  const challenge = await consumeChallenge(client, "passkey_register", input.challengeId, { nodeId: input.expectedNodeId, principalId: input.expectedPrincipalId });
   const verification = await verifyRegistrationResponse({
     response: input.response as never,
     expectedChallenge: challenge.challenge,
@@ -177,15 +196,16 @@ export async function verifyPasskeyRegistration(client: PoolClient, input: { cha
   return { verified: true, credential_id: String(credential.id) };
 }
 
-export async function passkeyAuthenticationOptions(client: PoolClient, input: { nodeId: string; email?: string; principalId?: string }) {
+export async function passkeyAuthenticationOptions(client: PoolClient, input: { nodeId?: string | null; email?: string; principalId?: string }) {
   const rp = rpConfig();
+  const scope = await trustedAuthScope(client, input.nodeId, null);
   let principalId = input.principalId ?? null;
   if (!principalId && input.email) {
-    const account = await client.query(`SELECT principal_id FROM identity_accounts WHERE node_id=$1 AND lower(email)=lower($2) ORDER BY updated_at DESC LIMIT 1`, [input.nodeId, input.email]);
+    const account = await client.query(`SELECT principal_id FROM identity_accounts WHERE node_id=$1 AND lower(email)=lower($2) ORDER BY updated_at DESC LIMIT 1`, [scope.nodeId, input.email]);
     principalId = account.rows[0]?.principal_id ?? null;
   }
   if (!principalId) throw Object.assign(new Error("PASSKEY_IDENTITY_NOT_FOUND"), { statusCode: 404 });
-  const credentials = await client.query(`SELECT credential_id,transports FROM passkey_credentials WHERE node_id=$1 AND principal_id=$2`, [input.nodeId, principalId]);
+  const credentials = await client.query(`SELECT credential_id,transports FROM passkey_credentials WHERE node_id=$1 AND principal_id=$2`, [scope.nodeId, principalId]);
   if (credentials.rowCount === 0) throw Object.assign(new Error("PASSKEY_NOT_ENROLLED"), { statusCode: 404 });
   const options = await generateAuthenticationOptions({
     rpID: rp.rpID,
@@ -194,15 +214,16 @@ export async function passkeyAuthenticationOptions(client: PoolClient, input: { 
   });
   const id = uuidv7();
   await client.query(
-    `INSERT INTO auth_challenges(id,node_id,principal_id,kind,challenge,expires_at) VALUES ($1,$2,$3,'passkey_authenticate',$4,$5)`,
-    [id, input.nodeId, principalId, options.challenge, new Date(Date.now() + AUTH_TTL_MS)]
+    `INSERT INTO auth_challenges(id,node_id,principal_id,workspace_id,kind,challenge,expires_at) VALUES ($1,$2,$3,$4,'passkey_authenticate',$5,$6)`,
+    [id, scope.nodeId, principalId, scope.workspaceId, options.challenge, new Date(Date.now() + AUTH_TTL_MS)]
   );
   return { challenge_id: id, options };
 }
 
-export async function verifyPasskeyAuthentication(client: PoolClient, input: { challengeId: string; response: any; workspaceId?: string | null }) {
+export async function verifyPasskeyAuthentication(client: PoolClient, input: { challengeId: string; response: any }) {
   const rp = rpConfig();
   const challenge = await consumeChallenge(client, "passkey_authenticate", input.challengeId);
+  await trustedAuthScope(client, challenge.node_id, challenge.workspace_id);
   const credentialId = String(input.response?.id ?? "");
   const stored = await client.query(`SELECT * FROM passkey_credentials WHERE node_id=$1 AND principal_id=$2 AND credential_id=$3`, [challenge.node_id, challenge.principal_id, credentialId]);
   if (stored.rowCount !== 1) throw Object.assign(new Error("PASSKEY_CREDENTIAL_NOT_FOUND"), { statusCode: 401 });
@@ -215,6 +236,8 @@ export async function verifyPasskeyAuthentication(client: PoolClient, input: { c
     credential: { id: row.credential_id, publicKey: new Uint8Array(row.public_key), counter: Number(row.counter), transports: row.transports } as never
   });
   if (!verification.verified) throw Object.assign(new Error("PASSKEY_AUTHENTICATION_FAILED"), { statusCode: 401 });
-  await client.query(`UPDATE passkey_credentials SET counter=$1,last_used_at=now() WHERE id=$2`, [Number((verification.authenticationInfo as any).newCounter ?? row.counter), row.id]);
-  return createWorkspaceSession(client, { principalId: challenge.principal_id, nodeId: challenge.node_id, workspaceId: input.workspaceId ?? null });
+  const newCounter = Number((verification.authenticationInfo as any).newCounter ?? row.counter);
+  if (newCounter < Number(row.counter)) throw Object.assign(new Error("PASSKEY_COUNTER_REGRESSION"), { statusCode: 401 });
+  await client.query(`UPDATE passkey_credentials SET counter=$1,last_used_at=now() WHERE id=$2`, [newCounter, row.id]);
+  return createWorkspaceSession(client, { principalId: challenge.principal_id, nodeId: challenge.node_id, workspaceId: challenge.workspace_id });
 }

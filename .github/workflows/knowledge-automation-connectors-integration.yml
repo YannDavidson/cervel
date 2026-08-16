@@ -1,0 +1,62 @@
+name: Knowledge Automation Connectors Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['apps/api/**','db/migrations/**','tests/**','package.json','.github/workflows/knowledge-automation-connectors-integration.yml']
+jobs:
+  knowledge-automation-connectors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+      CERVEL_CONNECTOR_TOKEN_KEY: ci-only-connector-key
+      CERVEL_AUTOMATION_KEY: ci-automation-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - name: Start MinIO
+        run: |
+          docker run -d --name cervel-minio -p 9000:9000 -e MINIO_ROOT_USER=cervel -e MINIO_ROOT_PASSWORD=change-me-now minio/minio:latest server /data
+          for i in {1..30}; do curl -fsS http://localhost:9000/minio/health/live >/dev/null && exit 0; sleep 1; done
+          docker logs cervel-minio; exit 1
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Verify connector automation schema and state machine
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT provider,status FROM source_connections LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT remote_id,status,next_sync_at,last_content_sha256 FROM watched_sources LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT remote_version,content_sha256,cko_id FROM source_documents LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT status,previous_sha256,content_sha256 FROM source_sync_runs LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT kind,severity,dedupe_key FROM knowledge_health_notifications LIMIT 0;"
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json); WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json); PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          CONN=$(python - <<'PY'
+          import uuid; print(uuid.uuid4())
+          PY
+          )
+          WATCH=$(python - <<'PY'
+          import uuid; print(uuid.uuid4())
+          PY
+          )
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO source_connections(id,node_id,workspace_id,principal_id,provider,account_subject,status) VALUES('$CONN','$NODE_ID','$WORKSPACE_ID','$PRINCIPAL_ID','google_drive','ci','connected'); INSERT INTO watched_sources(id,connection_id,node_id,workspace_id,principal_id,remote_id,name,sync_interval_minutes,status,last_success_at) VALUES('$WATCH','$CONN','$NODE_ID','$WORKSPACE_ID','$PRINCIPAL_ID','remote-ci','CI Source',5,'fresh',now()-interval '20 minutes'); UPDATE watched_sources SET status='stale' WHERE id='$WATCH' AND last_success_at < now()-make_interval(mins=>sync_interval_minutes*3);"
+          test "$(psql "$DATABASE_URL" -Atc "SELECT status FROM watched_sources WHERE id='$WATCH'")" = stale

@@ -121,6 +121,9 @@ export async function hybridRetrieve(
        LEFT JOIN embeddings e ON e.fragment_id = f.id AND e.model_name = $4
        WHERE f.node_id = $1
          AND f.text_content IS NOT NULL
+         AND (f.artifact_id IS NULL OR EXISTS (
+              SELECT 1 FROM artifacts current_artifact
+              WHERE current_artifact.id = f.artifact_id AND current_artifact.is_current = true))
          AND ($5::uuid[] IS NULL OR f.cko_id = ANY($5::uuid[]))
          AND ($6::uuid IS NULL OR EXISTS (
               SELECT 1 FROM knowledge_objects ko WHERE ko.id = f.cko_id AND ko.workspace_id = $6))

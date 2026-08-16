@@ -1,0 +1,103 @@
+name: Identity Capture Library Integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'db/migrations/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/identity-capture-library-integration.yml'
+
+jobs:
+  identity-capture-library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cervel
+          POSTGRES_PASSWORD: cervel
+          POSTGRES_DB: cervel
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PORT: 8787
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+      CERVEL_WEBAUTHN_RP_ID: localhost
+      CERVEL_WEBAUTHN_RP_NAME: CERVEL CI
+      CERVEL_WEBAUTHN_ORIGIN: http://localhost:8787
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - name: Start MinIO
+        run: |
+          docker run -d --name cervel-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=cervel -e MINIO_ROOT_PASSWORD=change-me-now \
+            minio/minio:latest server /data
+          for i in {1..30}; do curl -fsS http://localhost:9000/minio/health/live >/dev/null && exit 0; sleep 1; done
+          docker logs cervel-minio; exit 1
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Start API
+        run: |
+          npm run dev:api > /tmp/cervel-api.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://localhost:8787/health >/dev/null && exit 0; sleep 1; done
+          cat /tmp/cervel-api.log; exit 1
+      - name: Exercise capture inbox library and editing
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          SESSION=$(curl -fsS -X POST http://localhost:8787/v1/session -H 'content-type: application/json' -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"principal_id\":\"$PRINCIPAL_ID\"}")
+          TOKEN=$(echo "$SESSION" | jq -r .token)
+          AUTH="Authorization: Bearer $TOKEN"
+
+          LIB=$(curl -fsS -X POST http://localhost:8787/v1/workspace/libraries -H "$AUTH" -H 'content-type: application/json' -d '{"name":"Local AI Research","description":"Owned research knowledge"}')
+          LIB_ID=$(echo "$LIB" | jq -r .id)
+
+          CAPTURE=$(curl -fsS -X POST http://localhost:8787/v1/workspace/capture -H "$AUTH" -H 'content-type: application/json' -d "{\"title\":\"CERVEL Native Note\",\"source_type\":\"note\",\"mime_type\":\"text/markdown\",\"content_text\":\"# CERVEL\\nKnowledge remains sovereign.\",\"library_ids\":[\"$LIB_ID\"]}")
+          test "$(echo "$CAPTURE" | jq -r .status)" = "ready"
+          CKO_ID=$(echo "$CAPTURE" | jq -r .object.id)
+
+          INBOX=$(curl -fsS http://localhost:8787/v1/workspace/inbox -H "$AUTH")
+          echo "$INBOX" | jq -e --arg id "$CKO_ID" 'map(select(.cko_id==$id and .status=="ready")) | length == 1' >/dev/null
+
+          EDIT=$(curl -fsS -X PATCH "http://localhost:8787/v1/workspace/objects/$CKO_ID" -H "$AUTH" -H 'content-type: application/json' -d '{"title":"CERVEL Edited Note","summary":"Editable owned knowledge","note":"Updated native note"}')
+          test "$(echo "$EDIT" | jq -r .title)" = "CERVEL Edited Note"
+
+          EDITOR=$(curl -fsS "http://localhost:8787/v1/workspace/objects/$CKO_ID/editor" -H "$AUTH")
+          test "$(echo "$EDITOR" | jq -r .note)" = "Updated native note"
+          echo "$EDITOR" | jq -e --arg lib "$LIB_ID" '.libraries | map(.id) | index($lib) != null' >/dev/null
+
+          curl -fsS -X DELETE http://localhost:8787/v1/session -H "$AUTH" -o /dev/null
+          STATUS=$(curl -sS -o /tmp/revoked.json -w '%{http_code}' http://localhost:8787/v1/workspace -H "$AUTH")
+          test "$STATUS" = "401"
+      - name: Verify identity schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT provider,issuer,subject FROM identity_accounts LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT credential_id,counter FROM passkey_credentials LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT status,cko_id FROM capture_jobs LIMIT 0;"
+      - name: Show logs on failure
+        if: failure()
+        run: cat /tmp/cervel-api.log || true

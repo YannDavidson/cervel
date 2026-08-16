@@ -23,7 +23,7 @@ export function registerExperienceRoutes(app: FastifyInstance) {
       mimeType: body.mime_type, contentBase64: body.content_base64, contentText: body.content_text,
       sourceUrl: body.source_url, libraryIds: body.library_ids
     }));
-    return reply.code(201).send(result);
+    return reply.code(result.status === "ready" ? 201 : 422).send(result);
   });
 
   app.get("/v1/workspace/inbox", async (request, reply) => {

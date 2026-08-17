@@ -73,11 +73,8 @@ CREATE TABLE IF NOT EXISTS source_picker_cache (
 CREATE INDEX IF NOT EXISTS source_picker_cache_parent_idx
   ON source_picker_cache(connection_id,parent_remote_id,name);
 
-CREATE OR REPLACE FUNCTION cervel_source_freshness(
-  last_success timestamptz,
-  interval_minutes integer,
-  source_status text
-) RETURNS real LANGUAGE sql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION cervel_source_freshness(last_success timestamptz, interval_minutes integer, source_status text)
+RETURNS real LANGUAGE sql STABLE AS $$
   SELECT CASE
     WHEN source_status IN ('error','stale') THEN 0.35::real
     WHEN source_status = 'paused' THEN 0.65::real

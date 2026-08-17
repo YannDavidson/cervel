@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { PoolClient } from "pg";
 import { addWatch, syncWatch } from "./connectors";
 import { listProviderItems, providerDelta, loadConnection, providerAccessToken, type PickerItem } from "./source-provider";
@@ -11,6 +11,10 @@ function scope(session: Session) {
   return {nodeId,workspaceId,principalId};
 }
 function digest(value:string){return createHash("sha256").update(value).digest("hex");}
+function secureHexEqual(left:string,right:string){
+  if(!/^[0-9a-f]+$/i.test(left)||! /^[0-9a-f]+$/i.test(right)||left.length!==right.length)return false;
+  return timingSafeEqual(Buffer.from(left,"hex"),Buffer.from(right,"hex"));
+}
 
 export async function browseSource(client:PoolClient,session:Session,connectionId:string,parentId?:string|null,cursor?:string|null){
   const s=scope(session),connection=await loadConnection(client,connectionId,s.nodeId,s.workspaceId);
@@ -71,7 +75,7 @@ export async function syncConnectionDelta(client:PoolClient,connectionId:string,
   return {processed:total,cursor,has_more:hasMore};
 }
 
-export async function acceptWebhook(client:PoolClient,provider:string,headers:Record<string,unknown>,body:unknown){
+export async function acceptWebhook(client:PoolClient,provider:string,headers:Record<string,unknown>,body:unknown,rawBody?:Buffer){
   const subscriptionId=String(headers["x-goog-channel-id"]??headers["x-cervel-subscription-id"]??"");
   if(provider==="google_drive"&&subscriptionId){
     const sub=await client.query(`SELECT * FROM source_webhook_subscriptions WHERE provider='google_drive' AND provider_subscription_id=$1 AND status='active'`,[subscriptionId]);
@@ -92,6 +96,11 @@ export async function acceptWebhook(client:PoolClient,provider:string,headers:Re
     return {accepted:true,count:accepted};
   }
   if(provider==="dropbox"){
+    const supplied=String(headers["x-dropbox-signature"]??"").toLowerCase();
+    const secret=process.env.CERVEL_DROPBOX_CLIENT_SECRET;
+    if(!secret||!rawBody)throw Object.assign(new Error("DROPBOX_WEBHOOK_SIGNATURE_CONTEXT_REQUIRED"),{statusCode:503});
+    const expected=createHmac("sha256",secret).update(rawBody).digest("hex");
+    if(!secureHexEqual(supplied,expected))throw Object.assign(new Error("WEBHOOK_TOKEN_INVALID"),{statusCode:401});
     const accounts=Object.keys((body as any)?.list_folder?.accounts??{});if(accounts.length===0)return {accepted:true,count:0};
     await client.query(`UPDATE source_connections SET delta_cursor_updated_at=coalesce(delta_cursor_updated_at,now()) WHERE provider='dropbox' AND account_subject=ANY($1::text[])`,[accounts]);
     return {accepted:true,count:accounts.length};
@@ -105,9 +114,10 @@ export async function activateProviderWebhook(client:PoolClient,session:Session,
   const callback=`${base.replace(/\/$/,"")}/v1/connectors/webhooks/${connection.provider}`;
   const id=uuidv7(),secret=randomBytes(32).toString("base64url"),secretHash=digest(secret);
   if(connection.provider==="dropbox"){
+    if(!process.env.CERVEL_DROPBOX_CLIENT_SECRET)throw Object.assign(new Error("CERVEL_DROPBOX_CLIENT_SECRET_REQUIRED"),{statusCode:503});
     await client.query(`INSERT INTO source_webhook_subscriptions(id,connection_id,watched_source_id,provider,provider_subscription_id,channel_token_hash,callback_path,status) VALUES($1,$2,$3,'dropbox',$4,$5,$6,'active')`,[id,connectionId,watchId??null,connectionId,secretHash,callback]);
     await client.query(`UPDATE source_connections SET webhook_status='active',updated_at=now() WHERE id=$1`,[connectionId]);
-    return {id,provider:"dropbox",callback_url:callback,note:"Configure this URL once in the Dropbox app console; Dropbox webhooks are app-level."};
+    return {id,provider:"dropbox",callback_url:callback,note:"Configure this URL in the Dropbox app console. CERVEL verifies X-Dropbox-Signature against the app secret."};
   }
   const access=await providerAccessToken(client,connection);
   if(connection.provider==="google_drive"){

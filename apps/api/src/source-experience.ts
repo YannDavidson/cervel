@@ -10,6 +10,7 @@ function scope(session: Session) {
   if(!workspaceId) throw Object.assign(new Error("WORKSPACE_SESSION_SCOPE_REQUIRED"),{statusCode:400});
   return {nodeId,workspaceId,principalId};
 }
+function digest(value:string){return createHash("sha256").update(value).digest("hex");}
 
 export async function browseSource(client:PoolClient,session:Session,connectionId:string,parentId?:string|null,cursor?:string|null){
   const s=scope(session),connection=await loadConnection(client,connectionId,s.nodeId,s.workspaceId);
@@ -36,7 +37,7 @@ export async function createSourceWatch(client:PoolClient,session:Session,input:
   if(input.remoteKind==="folder"&&input.recursive){
     const items:PickerItem[]=[];await walkFolder(client,input.connectionId,session,input.remoteId,0,20,items);
     for(const item of items.filter(x=>x.remote_kind==="file")){
-      const child=await addWatch(client,session,{connectionId:input.connectionId,remoteId:item.remote_id,name:item.name,remoteKind:"file",mimeType:item.mime_type,libraryId:input.libraryId,intervalMinutes:input.intervalMinutes??60});
+      const child=await addWatch(client,session,{connectionId:input.connectionId,remoteId:item.remote_id,name:item.name,remoteKind:"file",mimeType:item.mime_type??undefined,libraryId:input.libraryId,intervalMinutes:input.intervalMinutes??60});
       await client.query(`UPDATE watched_sources SET parent_remote_id=$2,delta_mode='delta',metadata=metadata||$3::jsonb WHERE id=$1`,[child.id,input.remoteId,JSON.stringify({managed_by_folder_watch:watch.id,remote_path:item.remote_path??null})]);
     }
   }
@@ -56,7 +57,7 @@ export async function syncConnectionDelta(client:PoolClient,connectionId:string,
           let target=watch;
           if(watch.remote_kind!=="file"||watch.remote_id!==item.remote_id){
             const session={node_id:watch.node_id,workspace_id:watch.workspace_id,principal_id:watch.principal_id};
-            target=await addWatch(client,session,{connectionId,remoteId:item.remote_id,name:item.name,remoteKind:"file",mimeType:item.mime_type,libraryId:watch.library_id,intervalMinutes:watch.sync_interval_minutes});
+            target=await addWatch(client,session,{connectionId,remoteId:item.remote_id,name:item.name,remoteKind:"file",mimeType:item.mime_type??undefined,libraryId:watch.library_id,intervalMinutes:watch.sync_interval_minutes});
             await client.query(`UPDATE watched_sources SET parent_remote_id=$2,delta_mode='delta',metadata=metadata||$3::jsonb WHERE id=$1`,[target.id,watch.remote_id,JSON.stringify({managed_by_folder_watch:watch.id,remote_path:item.remote_path??null})]);
           }
           await syncWatch(client,target.id);
@@ -75,14 +76,20 @@ export async function acceptWebhook(client:PoolClient,provider:string,headers:Re
   if(provider==="google_drive"&&subscriptionId){
     const sub=await client.query(`SELECT * FROM source_webhook_subscriptions WHERE provider='google_drive' AND provider_subscription_id=$1 AND status='active'`,[subscriptionId]);
     if(sub.rowCount!==1)throw Object.assign(new Error("WEBHOOK_SUBSCRIPTION_INVALID"),{statusCode:401});
+    const supplied=String(headers["x-goog-channel-token"]??"");
+    if(!supplied||digest(supplied)!==sub.rows[0].channel_token_hash)throw Object.assign(new Error("WEBHOOK_TOKEN_INVALID"),{statusCode:401});
     await client.query(`UPDATE source_webhook_subscriptions SET last_event_at=now(),updated_at=now() WHERE id=$1`,[sub.rows[0].id]);
     return {accepted:true,connection_id:sub.rows[0].connection_id};
   }
   if(provider==="onedrive"){
-    const notifications=Array.isArray((body as any)?.value)?(body as any).value:[];for(const n of notifications){
+    const notifications=Array.isArray((body as any)?.value)?(body as any).value:[];let accepted=0;
+    for(const n of notifications){
       const sub=await client.query(`SELECT * FROM source_webhook_subscriptions WHERE provider='onedrive' AND provider_subscription_id=$1 AND status='active'`,[String(n.subscriptionId??"")]);
-      if(sub.rowCount===1)await client.query(`UPDATE source_webhook_subscriptions SET last_event_at=now(),updated_at=now() WHERE id=$1`,[sub.rows[0].id]);
-    }return {accepted:true,count:notifications.length};
+      if(sub.rowCount!==1)continue;
+      const state=String(n.clientState??"");if(!state||digest(state)!==sub.rows[0].channel_token_hash)continue;
+      await client.query(`UPDATE source_webhook_subscriptions SET last_event_at=now(),updated_at=now() WHERE id=$1`,[sub.rows[0].id]);accepted++;
+    }
+    return {accepted:true,count:accepted};
   }
   if(provider==="dropbox"){
     const accounts=Object.keys((body as any)?.list_folder?.accounts??{});if(accounts.length===0)return {accepted:true,count:0};
@@ -96,7 +103,7 @@ export async function activateProviderWebhook(client:PoolClient,session:Session,
   const s=scope(session),connection=await loadConnection(client,connectionId,s.nodeId,s.workspaceId),base=process.env.CERVEL_PUBLIC_BASE_URL;
   if(!base)throw Object.assign(new Error("CERVEL_PUBLIC_BASE_URL_REQUIRED"),{statusCode:503});
   const callback=`${base.replace(/\/$/,"")}/v1/connectors/webhooks/${connection.provider}`;
-  const id=uuidv7(),secret=randomBytes(32).toString("base64url"),secretHash=createHash("sha256").update(secret).digest("hex");
+  const id=uuidv7(),secret=randomBytes(32).toString("base64url"),secretHash=digest(secret);
   if(connection.provider==="dropbox"){
     await client.query(`INSERT INTO source_webhook_subscriptions(id,connection_id,watched_source_id,provider,provider_subscription_id,channel_token_hash,callback_path,status) VALUES($1,$2,$3,'dropbox',$4,$5,$6,'active')`,[id,connectionId,watchId??null,connectionId,secretHash,callback]);
     await client.query(`UPDATE source_connections SET webhook_status='active',updated_at=now() WHERE id=$1`,[connectionId]);

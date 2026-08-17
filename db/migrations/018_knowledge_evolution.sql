@@ -7,17 +7,19 @@ CREATE TABLE knowledge_diffs (
   cko_id uuid NOT NULL REFERENCES knowledge_objects(id),
   previous_artifact_id uuid REFERENCES artifacts(id),
   current_artifact_id uuid NOT NULL REFERENCES artifacts(id),
-  previous_version integer,
-  current_version integer NOT NULL,
+  previous_version integer CHECK (previous_version IS NULL OR previous_version > 0),
+  current_version integer NOT NULL CHECK (current_version > 0),
   diff_kind text NOT NULL DEFAULT 'semantic' CHECK (diff_kind IN ('semantic','text','metadata')),
   summary text,
   added jsonb NOT NULL DEFAULT '[]'::jsonb,
   removed jsonb NOT NULL DEFAULT '[]'::jsonb,
   modified jsonb NOT NULL DEFAULT '[]'::jsonb,
-  unchanged_count integer NOT NULL DEFAULT 0,
+  unchanged_count integer NOT NULL DEFAULT 0 CHECK (unchanged_count >= 0),
   confidence real NOT NULL DEFAULT 0.7 CHECK (confidence BETWEEN 0 AND 1),
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(cko_id,current_artifact_id)
+  UNIQUE(cko_id,current_artifact_id),
+  CHECK (previous_artifact_id IS NULL OR previous_artifact_id <> current_artifact_id),
+  CHECK (previous_version IS NULL OR current_version > previous_version)
 );
 
 CREATE TABLE claim_evolutions (
@@ -28,14 +30,16 @@ CREATE TABLE claim_evolutions (
   previous_claim_id uuid REFERENCES claims(id),
   current_claim_id uuid REFERENCES claims(id),
   evolution_type text NOT NULL CHECK (evolution_type IN ('introduced','confirmed','modified','contradicted','superseded','withdrawn')),
-  knowledge_diff_id uuid REFERENCES knowledge_diffs(id) ON DELETE SET NULL,
+  knowledge_diff_id uuid NOT NULL REFERENCES knowledge_diffs(id) ON DELETE CASCADE,
   confidence real NOT NULL DEFAULT 0.7 CHECK (confidence BETWEEN 0 AND 1),
   details jsonb NOT NULL DEFAULT '{}'::jsonb,
   observed_at timestamptz NOT NULL DEFAULT now(),
   effective_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (previous_claim_id IS NOT NULL OR current_claim_id IS NOT NULL)
+  CHECK (previous_claim_id IS NOT NULL OR current_claim_id IS NOT NULL),
+  CHECK (previous_claim_id IS NULL OR current_claim_id IS NULL OR previous_claim_id <> current_claim_id)
 );
+CREATE UNIQUE INDEX claim_evolutions_idempotency_uidx ON claim_evolutions(knowledge_diff_id,evolution_type,COALESCE(previous_claim_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(current_claim_id,'00000000-0000-0000-0000-000000000000'::uuid));
 
 ALTER TABLE claims ADD COLUMN IF NOT EXISTS temporal_status text NOT NULL DEFAULT 'current'
   CHECK (temporal_status IN ('current','superseded','withdrawn','contradicted'));
@@ -51,7 +55,7 @@ CREATE TABLE knowledge_events (
   subject_type text NOT NULL CHECK (subject_type IN ('cko','claim','entity','source','decision','project')),
   subject_id uuid NOT NULL,
   cko_id uuid REFERENCES knowledge_objects(id),
-  knowledge_diff_id uuid REFERENCES knowledge_diffs(id) ON DELETE SET NULL,
+  knowledge_diff_id uuid REFERENCES knowledge_diffs(id) ON DELETE CASCADE,
   previous_claim_id uuid REFERENCES claims(id),
   current_claim_id uuid REFERENCES claims(id),
   summary text NOT NULL,
@@ -61,6 +65,7 @@ CREATE TABLE knowledge_events (
   effective_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX knowledge_events_evolution_uidx ON knowledge_events(knowledge_diff_id,event_type,subject_type,subject_id) WHERE knowledge_diff_id IS NOT NULL;
 
 CREATE TABLE knowledge_event_impacts (
   event_id uuid NOT NULL REFERENCES knowledge_events(id) ON DELETE CASCADE,
@@ -72,10 +77,10 @@ CREATE TABLE knowledge_event_impacts (
   PRIMARY KEY(event_id,impacted_type,impacted_id,impact_kind)
 );
 
-CREATE INDEX knowledge_diffs_workspace_time_idx ON knowledge_diffs(workspace_id,created_at DESC);
-CREATE INDEX claim_evolutions_cko_time_idx ON claim_evolutions(cko_id,observed_at DESC);
-CREATE INDEX knowledge_events_workspace_time_idx ON knowledge_events(workspace_id,observed_at DESC);
-CREATE INDEX knowledge_events_cko_time_idx ON knowledge_events(cko_id,observed_at DESC) WHERE cko_id IS NOT NULL;
+CREATE INDEX knowledge_diffs_workspace_time_idx ON knowledge_diffs(node_id,workspace_id,created_at DESC);
+CREATE INDEX claim_evolutions_cko_time_idx ON claim_evolutions(node_id,workspace_id,cko_id,observed_at DESC);
+CREATE INDEX knowledge_events_workspace_time_idx ON knowledge_events(node_id,workspace_id,observed_at DESC);
+CREATE INDEX knowledge_events_cko_time_idx ON knowledge_events(node_id,workspace_id,cko_id,observed_at DESC) WHERE cko_id IS NOT NULL;
 CREATE INDEX claims_temporal_current_idx ON claims(node_id,temporal_status,semantic_subject_entity_id,semantic_predicate);
 
 COMMIT;

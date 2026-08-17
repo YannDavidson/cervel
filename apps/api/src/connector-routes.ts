@@ -1,8 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { withTransaction } from "./db";
 import { resolveWorkspaceSession } from "./workspace";
-import { connectorStart, connectorCallback, addWatch, syncWatch, syncDueSources, refreshHealth, type Provider } from "./connectors";
-import { browseSource, createSourceWatch, syncConnectionDelta, acceptWebhook, activateProviderWebhook } from "./source-experience";
+import { connectorStart, connectorCallback, refreshHealth, type Provider } from "./connectors";
+import { acceptWebhook, activateProviderWebhook } from "./source-experience";
+import { browseSourceV2, createSourceWatchV2, syncConnectionDeltaV2 } from "./source-experience-v2";
+import { syncWatchV2, syncDueSourcesV2 } from "./source-sync-v2";
+import { renderSourcesUI } from "../../web/src/sources-ui";
 
 function token(request: FastifyRequest) {
   const auth = request.headers.authorization;
@@ -18,8 +21,10 @@ function provider(value: string): Provider {
 }
 
 export function registerConnectorRoutes(app: FastifyInstance) {
+  app.get("/sources", async (_request, reply) => reply.type("text/html; charset=utf-8").send(renderSourcesUI()));
+
   app.post("/v1/connectors/:provider/start", async (request, reply) => {
-    const s = await session(request); const { provider: value } = request.params as { provider: string };
+    const s = await session(request), { provider: value } = request.params as { provider: string };
     return reply.send(await withTransaction(client => connectorStart(client, s, provider(value))));
   });
   app.get("/v1/connectors/:provider/callback", async (request, reply) => {
@@ -44,11 +49,11 @@ export function registerConnectorRoutes(app: FastifyInstance) {
 
   app.get("/v1/connectors/:id/items", async (request, reply) => {
     const s=await session(request),{id}=request.params as {id:string},{parent_id,cursor}=request.query as {parent_id?:string;cursor?:string};
-    return reply.send(await withTransaction(client=>browseSource(client,s,id,parent_id??null,cursor??null)));
+    return reply.send(await withTransaction(client=>browseSourceV2(client,s,id,parent_id??null,cursor??null)));
   });
   app.post("/v1/connectors/:id/delta", async (request, reply) => {
     const s=await session(request),{id}=request.params as {id:string};
-    return reply.send(await withTransaction(client=>syncConnectionDelta(client,id,String(s.node_id),String(s.workspace_id))));
+    return reply.send(await withTransaction(client=>syncConnectionDeltaV2(client,id,String(s.node_id),String(s.workspace_id))));
   });
   app.post("/v1/connectors/:id/webhook", async (request, reply) => {
     const s=await session(request),{id}=request.params as {id:string},body=request.body as {watch_id?:string};
@@ -60,7 +65,7 @@ export function registerConnectorRoutes(app: FastifyInstance) {
     if(!body?.connection_id||!body?.remote_id||!body?.name)return reply.code(400).send({error:"CONNECTION_REMOTE_AND_NAME_REQUIRED"});
     const kind=body.remote_kind??"file";if(!["file","folder"].includes(kind))return reply.code(400).send({error:"WATCHED_SOURCE_KIND_INVALID"});
     const interval=body.sync_interval_minutes==null?60:Number(body.sync_interval_minutes);if(!Number.isInteger(interval)||interval<5||interval>10080)return reply.code(400).send({error:"SYNC_INTERVAL_INVALID"});
-    return reply.code(201).send(await withTransaction(client=>createSourceWatch(client,s,{connectionId:body.connection_id,remoteId:body.remote_id,name:body.name,remoteKind:kind,libraryId:body.library_id,intervalMinutes:interval,recursive:Boolean(body.recursive)})));
+    return reply.code(201).send(await withTransaction(client=>createSourceWatchV2(client,s,{connectionId:body.connection_id,remoteId:body.remote_id,name:body.name,remoteKind:kind,libraryId:body.library_id,intervalMinutes:interval,recursive:Boolean(body.recursive)})));
   });
   app.get("/v1/watched-sources", async (request, reply) => {
     const s=await session(request);const result=await withTransaction(client=>client.query(
@@ -75,8 +80,8 @@ export function registerConnectorRoutes(app: FastifyInstance) {
   app.post("/v1/watched-sources/:id/sync", async (request, reply) => {
     const s=await session(request),{id}=request.params as {id:string};const allowed=await withTransaction(client=>client.query(`SELECT connection_id,remote_kind,recursive FROM watched_sources WHERE id=$1 AND node_id=$2 AND workspace_id=$3`,[id,s.node_id,s.workspace_id]));
     if(allowed.rowCount!==1)return reply.code(404).send({error:"WATCHED_SOURCE_NOT_FOUND"});
-    if(allowed.rows[0].remote_kind==="folder"||allowed.rows[0].recursive)return reply.send(await withTransaction(client=>syncConnectionDelta(client,allowed.rows[0].connection_id,String(s.node_id),String(s.workspace_id))));
-    return reply.send(await withTransaction(client=>syncWatch(client,id)));
+    if(allowed.rows[0].remote_kind==="folder"||allowed.rows[0].recursive)return reply.send(await withTransaction(client=>syncConnectionDeltaV2(client,allowed.rows[0].connection_id,String(s.node_id),String(s.workspace_id))));
+    return reply.send(await withTransaction(client=>syncWatchV2(client,id)));
   });
   app.patch("/v1/watched-sources/:id", async (request, reply) => {
     const s=await session(request),{id}=request.params as {id:string},body=request.body as any;const interval=body?.sync_interval_minutes==null?null:Number(body.sync_interval_minutes);
@@ -107,9 +112,9 @@ export function registerConnectorRoutes(app: FastifyInstance) {
     const expected=process.env.CERVEL_AUTOMATION_KEY,supplied=request.headers["x-cervel-automation-key"];
     if(!expected||typeof supplied!=="string"||supplied!==expected)return reply.code(401).send({error:"AUTOMATION_KEY_INVALID"});
     const body=request.body as {limit?:number}|undefined,limit=Math.max(1,Math.min(Number(body?.limit??20),100));
-    const regular=await withTransaction(client=>syncDueSources(client,limit));
+    const regular=await withTransaction(client=>syncDueSourcesV2(client,limit));
     const deltaConnections=await withTransaction(client=>client.query(`SELECT DISTINCT connection_id FROM watched_sources WHERE sync_enabled=true AND delta_mode IN ('delta','webhook') AND next_sync_at<=now() LIMIT $1`,[limit]));
-    const delta=[];for(const row of deltaConnections.rows){try{delta.push(await withTransaction(client=>syncConnectionDelta(client,row.connection_id)));}catch(error){delta.push({connection_id:row.connection_id,status:"failed",error:error instanceof Error?error.message:String(error)});}}
+    const delta=[];for(const row of deltaConnections.rows){try{delta.push(await withTransaction(client=>syncConnectionDeltaV2(client,row.connection_id)));}catch(error){delta.push({connection_id:row.connection_id,status:"failed",error:error instanceof Error?error.message:String(error)});}}
     return reply.send({results:regular,delta});
   });
 }

@@ -1,4 +1,4 @@
-import { createDecipheriv, createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { boundedFetchBuffer } from "./bounded-stream";
 import type { Provider } from "./connectors";
@@ -17,6 +17,13 @@ function open(value?: string | null) {
   const decipher = createDecipheriv("aes-256-gcm", key(), iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
+}
+function seal(value?: string | null) {
+  if (!value) return null;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
 }
 function env(provider: Provider, name: string) {
   const prefix = provider === "google_drive" ? "GOOGLE_DRIVE" : provider === "dropbox" ? "DROPBOX" : "ONEDRIVE";
@@ -52,11 +59,23 @@ export async function providerAccessToken(client: PoolClient, connection: Source
     const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh,
       client_id: env(connection.provider, "CLIENT_ID"), client_secret: env(connection.provider, "CLIENT_SECRET") });
     const response = await fetch(tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form });
-    if (!response.ok) throw Object.assign(new Error("CONNECTOR_REAUTH_REQUIRED"), { statusCode: 401 });
+    if (!response.ok) {
+      await client.query(`UPDATE source_connections SET status='reauth_required',last_error='CONNECTOR_REAUTH_REQUIRED',updated_at=now() WHERE id=$1`, [connection.id]);
+      throw Object.assign(new Error("CONNECTOR_REAUTH_REQUIRED"), { statusCode: 401 });
+    }
     const token = await response.json() as any;
     access = token.access_token;
     if (!access) throw Object.assign(new Error("CONNECTOR_REAUTH_REQUIRED"), { statusCode: 401 });
-    // PR #8 intentionally leaves ciphertext rotation to the canonical PR #7 token writer; refresh is session-local here.
+    const tokenExpiresAt = token.expires_in ? new Date(Date.now() + Number(token.expires_in) * 1000) : null;
+    await client.query(
+      `UPDATE source_connections SET access_token_ciphertext=$2,
+       refresh_token_ciphertext=COALESCE($3,refresh_token_ciphertext),token_expires_at=$4,
+       status='connected',last_error=NULL,updated_at=now() WHERE id=$1`,
+      [connection.id, seal(access), seal(token.refresh_token), tokenExpiresAt]
+    );
+    connection.access_token_ciphertext = seal(access);
+    if (token.refresh_token) connection.refresh_token_ciphertext = seal(token.refresh_token);
+    connection.token_expires_at = tokenExpiresAt;
   }
   if (!access) throw Object.assign(new Error("CONNECTOR_REAUTH_REQUIRED"), { statusCode: 401 });
   return access;

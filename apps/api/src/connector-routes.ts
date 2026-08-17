@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { withTransaction } from "./db";
 import { resolveWorkspaceSession } from "./workspace";
@@ -6,6 +7,8 @@ import { acceptWebhook, activateProviderWebhook } from "./source-experience";
 import { browseSourceV2, createSourceWatchV2, syncConnectionDeltaV2 } from "./source-experience-v2";
 import { syncWatchV2, syncDueSourcesV2 } from "./source-sync-v2";
 import { renderSourcesUI } from "../../web/src/sources-ui";
+
+type RawBodyRequest = FastifyRequest & { cervelRawBody?: Buffer };
 
 function token(request: FastifyRequest) {
   const auth = request.headers.authorization;
@@ -21,6 +24,17 @@ function provider(value: string): Provider {
 }
 
 export function registerConnectorRoutes(app: FastifyInstance) {
+  app.addHook("preParsing", async (request, _reply, payload) => {
+    if (request.method === "POST" && request.url.split("?")[0] === "/v1/connectors/webhooks/dropbox") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of payload) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const raw = Buffer.concat(chunks);
+      (request as RawBodyRequest).cervelRawBody = raw;
+      return Readable.from(raw);
+    }
+    return payload;
+  });
+
   app.get("/sources", async (_request, reply) => reply.type("text/html; charset=utf-8").send(renderSourcesUI()));
 
   app.post("/v1/connectors/:provider/start", async (request, reply) => {
@@ -105,7 +119,8 @@ export function registerConnectorRoutes(app: FastifyInstance) {
   app.post("/v1/connectors/webhooks/:provider", async (request, reply) => {
     const {provider:value}=request.params as {provider:string};
     if(value==="onedrive"){const {validationToken}=request.query as {validationToken?:string};if(validationToken)return reply.type("text/plain").send(validationToken);}
-    return reply.send(await withTransaction(client=>acceptWebhook(client,value,request.headers as Record<string,unknown>,request.body)));
+    const rawBody=(request as RawBodyRequest).cervelRawBody;
+    return reply.send(await withTransaction(client=>acceptWebhook(client,value,request.headers as Record<string,unknown>,request.body,rawBody)));
   });
 
   app.post("/v1/internal/connectors/sync-due", async (request, reply) => {

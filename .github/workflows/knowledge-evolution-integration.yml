@@ -1,0 +1,51 @@
+name: Knowledge Evolution Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['apps/api/**','apps/web/**','db/migrations/**','tests/**','package.json','.github/workflows/knowledge-evolution-integration.yml']
+jobs:
+  knowledge-evolution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Validate temporal schema
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT previous_artifact_id,current_artifact_id,added,removed,modified FROM knowledge_diffs LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT previous_claim_id,current_claim_id,evolution_type FROM claim_evolutions LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT event_type,subject_type,observed_at,effective_at FROM knowledge_events LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT temporal_status,observed_at,effective_at,superseded_by_claim_id FROM claims LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT impacted_type,impact_kind FROM knowledge_event_impacts LIMIT 0;"
+      - name: Validate evolution runtime contracts
+        run: |
+          grep -q "semanticDiffArtifacts" apps/api/src/knowledge-evolution.ts
+          grep -q "evolveClaimsForObject" apps/api/src/knowledge-evolution.ts
+          grep -q "whatChanged" apps/api/src/knowledge-evolution.ts
+          grep -q "What Changed?" apps/web/src/changes-ui.ts
+          grep -q "CERVEL Knowledge Event Protocol" docs/ckep-v0.1.md

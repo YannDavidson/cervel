@@ -2,7 +2,7 @@ name: Knowledge Impact Dependency Integration
 on:
   pull_request:
     branches: [main]
-    paths: ['apps/api/**','db/migrations/**','tests/**','package.json','.github/workflows/knowledge-impact-dependency-integration.yml']
+    paths: ['apps/api/**','db/migrations/**','scripts/validate-impact-chain.ts','tests/**','package.json','.github/workflows/knowledge-impact-dependency-integration.yml']
 jobs:
   knowledge-impact-dependency:
     runs-on: ubuntu-latest
@@ -41,6 +41,16 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT event_id,root_type,root_id,max_depth,confidence_floor,status FROM impact_propagation_runs LIMIT 0;"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT impacted_type,impacted_id,depth,path,confidence,impact_kind FROM impact_paths LIMIT 0;"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT propagation_run_id,depth,path FROM knowledge_event_impacts LIMIT 0;"
+      - name: Validate real CKO to Claim to CCP to Answer propagation
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          npx tsx scripts/validate-impact-chain.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/impact-chain.json
+          jq -e '.impact_count >= 3' /tmp/impact-chain.json >/dev/null
+          jq -e '.claim_confidence > .ccp_confidence' /tmp/impact-chain.json >/dev/null
+          jq -e '.claim_confidence > .answer_confidence' /tmp/impact-chain.json >/dev/null
       - name: Validate impact runtime contracts
         run: |
           grep -q "depends_on" apps/api/src/impact-engine.ts

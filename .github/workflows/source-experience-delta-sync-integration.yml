@@ -1,0 +1,63 @@
+name: Source Experience Delta Sync Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['apps/api/**','apps/web/**','db/migrations/**','tests/**','package.json','.github/workflows/source-experience-delta-sync-integration.yml']
+jobs:
+  source-experience-delta-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+      CERVEL_CONNECTOR_TOKEN_KEY: ci-only-connector-key
+      CERVEL_AUTOMATION_KEY: ci-automation-key
+      CERVEL_PUBLIC_BASE_URL: https://example.invalid
+      CERVEL_CONNECTOR_MAX_BYTES: '1024'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Validate delta/freshness schema
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT delta_cursor,webhook_status FROM source_connections LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT recursive,delta_mode,freshness_score FROM watched_sources LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT provider,event_type,provider_cursor FROM source_delta_events LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT provider,status,callback_path FROM source_webhook_subscriptions LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT remote_kind,parent_remote_id FROM source_picker_cache LIMIT 0;"
+      - name: Validate freshness scoring behavior
+        run: |
+          set -euo pipefail
+          FRESH=$(psql "$DATABASE_URL" -Atc "SELECT cervel_source_freshness(now(),60,'fresh')")
+          STALE=$(psql "$DATABASE_URL" -Atc "SELECT cervel_source_freshness(now()-interval '4 hours',60,'stale')")
+          python - <<PY
+          fresh=float('$FRESH'); stale=float('$STALE')
+          assert fresh > stale, (fresh, stale)
+          assert 0 <= stale <= 1 and 0 <= fresh <= 1
+          PY
+      - name: Validate Sources UI artifact
+        run: |
+          grep -q "Recursive folder watch" apps/web/src/sources-ui.ts
+          grep -q "Delta sync" apps/web/src/sources-ui.ts
+          grep -q "Knowledge Health" apps/web/src/sources-ui.ts

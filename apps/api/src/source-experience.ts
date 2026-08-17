@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { addWatch, syncWatch } from "./connectors";
-import { listProviderItems, providerDelta, loadConnection, type PickerItem } from "./source-provider";
+import { listProviderItems, providerDelta, loadConnection, providerAccessToken, type PickerItem } from "./source-provider";
 import { uuidv7 } from "./uuidv7";
 
 type Session = Record<string, unknown>;
@@ -76,7 +76,6 @@ export async function acceptWebhook(client:PoolClient,provider:string,headers:Re
     const sub=await client.query(`SELECT * FROM source_webhook_subscriptions WHERE provider='google_drive' AND provider_subscription_id=$1 AND status='active'`,[subscriptionId]);
     if(sub.rowCount!==1)throw Object.assign(new Error("WEBHOOK_SUBSCRIPTION_INVALID"),{statusCode:401});
     await client.query(`UPDATE source_webhook_subscriptions SET last_event_at=now(),updated_at=now() WHERE id=$1`,[sub.rows[0].id]);
-    await client.query(`UPDATE source_connections SET delta_cursor_updated_at=coalesce(delta_cursor_updated_at,now()) WHERE id=$1`,[sub.rows[0].connection_id]);
     return {accepted:true,connection_id:sub.rows[0].connection_id};
   }
   if(provider==="onedrive"){
@@ -93,8 +92,30 @@ export async function acceptWebhook(client:PoolClient,provider:string,headers:Re
   throw Object.assign(new Error("WEBHOOK_PROVIDER_INVALID"),{statusCode:400});
 }
 
-export async function registerWebhookIntent(client:PoolClient,session:Session,connectionId:string,watchId?:string|null){
-  const s=scope(session),connection=await loadConnection(client,connectionId,s.nodeId,s.workspaceId);const id=uuidv7(),token=randomBytes(32).toString("base64url"),tokenHash=createHash("sha256").update(token).digest("hex");
-  await client.query(`INSERT INTO source_webhook_subscriptions(id,connection_id,watched_source_id,provider,channel_token_hash,callback_path,status) VALUES($1,$2,$3,$4,$5,$6,'pending')`,[id,connectionId,watchId??null,connection.provider,tokenHash,`/v1/connectors/webhooks/${connection.provider}`]);
-  return {id,provider:connection.provider,callback_path:`/v1/connectors/webhooks/${connection.provider}`,verification_token:token};
+export async function activateProviderWebhook(client:PoolClient,session:Session,connectionId:string,watchId?:string|null){
+  const s=scope(session),connection=await loadConnection(client,connectionId,s.nodeId,s.workspaceId),base=process.env.CERVEL_PUBLIC_BASE_URL;
+  if(!base)throw Object.assign(new Error("CERVEL_PUBLIC_BASE_URL_REQUIRED"),{statusCode:503});
+  const callback=`${base.replace(/\/$/,"")}/v1/connectors/webhooks/${connection.provider}`;
+  const id=uuidv7(),secret=randomBytes(32).toString("base64url"),secretHash=createHash("sha256").update(secret).digest("hex");
+  if(connection.provider==="dropbox"){
+    await client.query(`INSERT INTO source_webhook_subscriptions(id,connection_id,watched_source_id,provider,provider_subscription_id,channel_token_hash,callback_path,status) VALUES($1,$2,$3,'dropbox',$4,$5,$6,'active')`,[id,connectionId,watchId??null,connectionId,secretHash,callback]);
+    await client.query(`UPDATE source_connections SET webhook_status='active',updated_at=now() WHERE id=$1`,[connectionId]);
+    return {id,provider:"dropbox",callback_url:callback,note:"Configure this URL once in the Dropbox app console; Dropbox webhooks are app-level."};
+  }
+  const access=await providerAccessToken(client,connection);
+  if(connection.provider==="google_drive"){
+    let cursor=connection.delta_cursor;if(!cursor){const start=await providerDelta(client,connection,null);cursor=start.cursor;await client.query(`UPDATE source_connections SET delta_cursor=$2,delta_cursor_updated_at=now() WHERE id=$1`,[connectionId,cursor]);}
+    const channelId=randomBytes(16).toString("hex");
+    const r=await fetch(`https://www.googleapis.com/drive/v3/changes/watch?pageToken=${encodeURIComponent(String(cursor))}`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify({id:channelId,type:"web_hook",address:callback,token:secret})});
+    if(!r.ok)throw new Error("WEBHOOK_SUBSCRIBE_FAILED");const data=await r.json() as any;
+    await client.query(`INSERT INTO source_webhook_subscriptions(id,connection_id,watched_source_id,provider,provider_subscription_id,channel_token_hash,resource_id,callback_path,status,expires_at) VALUES($1,$2,$3,'google_drive',$4,$5,$6,$7,'active',$8)`,[id,connectionId,watchId??null,channelId,secretHash,data.resourceId??null,callback,data.expiration?new Date(Number(data.expiration)):null]);
+    await client.query(`UPDATE source_connections SET webhook_status='active',webhook_expires_at=$2,updated_at=now() WHERE id=$1`,[connectionId,data.expiration?new Date(Number(data.expiration)):null]);
+    return {id,provider:"google_drive",status:"active"};
+  }
+  const expiration=new Date(Date.now()+48*60*60*1000).toISOString();
+  const r=await fetch("https://graph.microsoft.com/v1.0/subscriptions",{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify({changeType:"updated",notificationUrl:callback,resource:"/me/drive/root",expirationDateTime:expiration,clientState:secret})});
+  if(!r.ok)throw new Error("WEBHOOK_SUBSCRIBE_FAILED");const data=await r.json() as any;
+  await client.query(`INSERT INTO source_webhook_subscriptions(id,connection_id,watched_source_id,provider,provider_subscription_id,channel_token_hash,resource_id,callback_path,status,expires_at) VALUES($1,$2,$3,'onedrive',$4,$5,$6,$7,'active',$8)`,[id,connectionId,watchId??null,data.id,secretHash,data.resource??null,callback,data.expirationDateTime??expiration]);
+  await client.query(`UPDATE source_connections SET webhook_status='active',webhook_expires_at=$2,updated_at=now() WHERE id=$1`,[connectionId,data.expirationDateTime??expiration]);
+  return {id,provider:"onedrive",status:"active"};
 }

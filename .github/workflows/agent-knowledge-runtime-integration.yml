@@ -39,6 +39,7 @@ jobs:
           WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
           PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
           npx tsx scripts/validate-agent-runtime.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/agent-result.json
-          jq -e '.tenant_blocked == true and .subject_blocked == true' /tmp/agent-result.json >/dev/null
+          jq -e '.provisioning_blocked == true and .tenant_blocked == true and .subject_blocked == true' /tmp/agent-result.json >/dev/null
           jq -e '.claim_status == "claimed" and .claim_agent_id == .agent_id' /tmp/agent-result.json >/dev/null
           jq -e '.context_id != null and .event_signal_count == 1 and .watch_signal_count == 1' /tmp/agent-result.json >/dev/null
+          jq -e '.replay_safe == true' /tmp/agent-result.json >/dev/null

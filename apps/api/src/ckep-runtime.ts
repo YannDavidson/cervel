@@ -4,6 +4,7 @@ import { validateCkep, type CkepEnvelope } from "../../../packages/ckep/src";
 import { mapScopedKnowledgeEventToCkep } from "../../../packages/ckep/src/legacy";
 
 function parseScopedUri(uri:string){const match=/^cke:\/\/([^/]+)\/workspaces\/([^/]+)\/events\/([^/]+)$/.exec(uri);if(!match)throw Object.assign(new Error("CKEP_EVENT_ID_INVALID"),{statusCode:400});return {authority:match[1],workspace:match[2],event:match[3]};}
+async function lockCkepStream(client:PoolClient,nodeId:string,workspaceId:string){await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,[`${nodeId}:${workspaceId}`]);}
 
 export async function appendCkepEvent(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;envelope:CkepEnvelope}){
   const validated=validateCkep(input.envelope);if(!validated.ok)throw Object.assign(new Error(`CKEP_INVALID:${validated.errors.join(",")}`),{statusCode:400});
@@ -12,9 +13,10 @@ export async function appendCkepEvent(client:PoolClient,input:{nodeId:string;wor
   if(identity.authority!==scope.rows[0].authority||identity.workspace!==input.workspaceId)throw Object.assign(new Error("CKEP_EVENT_SCOPE_MISMATCH"),{statusCode:403});
   const expectedNode=`ck://${scope.rows[0].authority}/nodes/${input.nodeId}`,expectedWorkspace=`ck://${scope.rows[0].authority}/workspaces/${input.workspaceId}`;
   if(event.scope.node!==expectedNode||event.scope.workspace!==expectedWorkspace)throw Object.assign(new Error("CKEP_SCOPE_MISMATCH"),{statusCode:403});
+  await lockCkepStream(client,input.nodeId,input.workspaceId);
   const existing=await client.query(`SELECT * FROM ckep_event_journal WHERE workspace_id=$1 AND idempotency_key=$2`,[input.workspaceId,event.integrity.idempotency_key]);
   if(existing.rowCount===1){if(existing.rows[0].envelope_hash!==event.integrity.hash)throw Object.assign(new Error("CKEP_IDEMPOTENCY_CONFLICT"),{statusCode:409});return {row:existing.rows[0],created:false};}
-  const latest=await client.query(`SELECT sequence,event_uri,envelope_hash FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 ORDER BY sequence DESC LIMIT 1 FOR UPDATE`,[input.nodeId,input.workspaceId]);
+  const latest=await client.query(`SELECT sequence,event_uri,envelope_hash FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 ORDER BY sequence DESC LIMIT 1`,[input.nodeId,input.workspaceId]);
   const expectedSequence=latest.rowCount===0?1:Number(latest.rows[0].sequence)+1;
   if(event.integrity.sequence!==expectedSequence)throw Object.assign(new Error(`CKEP_SEQUENCE_CONFLICT:${expectedSequence}`),{statusCode:409});
   if(expectedSequence===1&&event.integrity.previous_event)throw Object.assign(new Error("CKEP_FIRST_EVENT_PREVIOUS_FORBIDDEN"),{statusCode:409});
@@ -25,6 +27,7 @@ export async function appendCkepEvent(client:PoolClient,input:{nodeId:string;wor
 export async function publishKnowledgeEventAsCkep(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;knowledgeEventId:string}){
   const scope=await client.query(`SELECT n.slug AS authority FROM workspaces w JOIN nodes n ON n.id=w.node_id WHERE w.id=$1 AND w.node_id=$2`,[input.workspaceId,input.nodeId]);if(scope.rowCount!==1)throw Object.assign(new Error("CKEP_WORKSPACE_NOT_FOUND"),{statusCode:404});
   const event=await client.query(`SELECT * FROM knowledge_events WHERE id=$1 AND node_id=$2 AND workspace_id=$3`,[input.knowledgeEventId,input.nodeId,input.workspaceId]);if(event.rowCount!==1)throw Object.assign(new Error("KNOWLEDGE_EVENT_NOT_FOUND"),{statusCode:404});
+  await lockCkepStream(client,input.nodeId,input.workspaceId);
   const canonicalUri=`cke://${scope.rows[0].authority}/workspaces/${input.workspaceId}/events/${input.knowledgeEventId}`;
   const already=await client.query(`SELECT * FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 AND event_uri=$3`,[input.nodeId,input.workspaceId,canonicalUri]);if(already.rowCount===1)return {row:already.rows[0],created:false};
   const impacts=await client.query(`SELECT impacted_type,impacted_id,impact_kind,confidence,details FROM knowledge_event_impacts WHERE event_id=$1 ORDER BY impacted_type,impacted_id,impact_kind`,[input.knowledgeEventId]);

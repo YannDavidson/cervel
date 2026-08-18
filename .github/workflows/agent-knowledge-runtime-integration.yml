@@ -51,6 +51,7 @@ jobs:
           jq -e '.claim_id != null and .claim_status == "claimed"' /tmp/agent-result.json >/dev/null
           jq -e '.claim_agent_id == .agent_id' /tmp/agent-result.json >/dev/null
           jq -e '.context_id != null' /tmp/agent-result.json >/dev/null
+          jq -e '.event_signal_count == 1 and .watch_signal_count == 1' /tmp/agent-result.json >/dev/null
       - name: Validate runtime contracts
         run: |
           grep -q 'registerAgentRoutes' apps/api/src/server.ts

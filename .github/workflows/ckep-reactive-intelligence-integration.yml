@@ -45,12 +45,17 @@ jobs:
           PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
           npx tsx scripts/validate-ckep-reactive-intelligence.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/reactive.json
           jq -e '.journal_created == true and .dispatch_status == "succeeded"' /tmp/reactive.json >/dev/null
+          jq -e '.redispatch_same_run == true and .impact_run_count == 1' /tmp/reactive.json >/dev/null
           jq -e '.impact_kind == "affected" and .watch_alert == true' /tmp/reactive.json >/dev/null
-          jq -e '.agent_signal_count == 1 and .agent_sequence == 1 and .workspace_isolated == true' /tmp/reactive.json >/dev/null
+          jq -e '.agent_signal_count == 1 and .agent_sequence == 1' /tmp/reactive.json >/dev/null
+          jq -e '.barrier_blocked == true and .ordered_sequences == [2,3]' /tmp/reactive.json >/dev/null
+          jq -e '.workspace_isolated == true' /tmp/reactive.json >/dev/null
       - name: Validate convergence contracts
         run: |
           grep -q 'publishKnowledgeEventAsCkep' apps/api/src/evolution-routes.ts
           grep -q 'dispatchCkepJournalEvent' apps/api/src/evolution-routes.ts
+          grep -q 'pg_advisory_xact_lock' apps/api/src/ckep-reactive.ts
           grep -q 'propagateKnowledgeImpact' apps/api/src/ckep-reactive.ts
           grep -q 'evaluateEventForWatches' apps/api/src/ckep-reactive.ts
+          grep -q 'barrier AS' apps/api/src/agent-ckep-runtime.ts
           grep -q 'pollAgentCkepSignals' apps/api/src/agent-routes.ts

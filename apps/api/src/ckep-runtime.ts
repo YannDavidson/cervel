@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { uuidv7 } from "./uuidv7";
 import { validateCkep, type CkepEnvelope } from "../../../packages/ckep/src";
+import { mapScopedKnowledgeEventToCkep } from "../../../packages/ckep/src/legacy";
 
 function parseScopedUri(uri:string){const match=/^cke:\/\/([^/]+)\/workspaces\/([^/]+)\/events\/([^/]+)$/.exec(uri);if(!match)throw Object.assign(new Error("CKEP_EVENT_ID_INVALID"),{statusCode:400});return {authority:match[1],workspace:match[2],event:match[3]};}
 
@@ -11,23 +12,27 @@ export async function appendCkepEvent(client:PoolClient,input:{nodeId:string;wor
   if(identity.authority!==scope.rows[0].authority||identity.workspace!==input.workspaceId)throw Object.assign(new Error("CKEP_EVENT_SCOPE_MISMATCH"),{statusCode:403});
   const expectedNode=`ck://${scope.rows[0].authority}/nodes/${input.nodeId}`,expectedWorkspace=`ck://${scope.rows[0].authority}/workspaces/${input.workspaceId}`;
   if(event.scope.node!==expectedNode||event.scope.workspace!==expectedWorkspace)throw Object.assign(new Error("CKEP_SCOPE_MISMATCH"),{statusCode:403});
-
   const existing=await client.query(`SELECT * FROM ckep_event_journal WHERE workspace_id=$1 AND idempotency_key=$2`,[input.workspaceId,event.integrity.idempotency_key]);
   if(existing.rowCount===1){if(existing.rows[0].envelope_hash!==event.integrity.hash)throw Object.assign(new Error("CKEP_IDEMPOTENCY_CONFLICT"),{statusCode:409});return {row:existing.rows[0],created:false};}
-
   const latest=await client.query(`SELECT sequence,event_uri,envelope_hash FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 ORDER BY sequence DESC LIMIT 1 FOR UPDATE`,[input.nodeId,input.workspaceId]);
   const expectedSequence=latest.rowCount===0?1:Number(latest.rows[0].sequence)+1;
   if(event.integrity.sequence!==expectedSequence)throw Object.assign(new Error(`CKEP_SEQUENCE_CONFLICT:${expectedSequence}`),{statusCode:409});
   if(expectedSequence===1&&event.integrity.previous_event)throw Object.assign(new Error("CKEP_FIRST_EVENT_PREVIOUS_FORBIDDEN"),{statusCode:409});
   if(expectedSequence>1&&event.integrity.previous_event!==latest.rows[0].event_uri)throw Object.assign(new Error("CKEP_PREVIOUS_EVENT_MISMATCH"),{statusCode:409});
-
   const id=uuidv7();const row=await client.query(`INSERT INTO ckep_event_journal(id,node_id,workspace_id,event_uri,event_type,subject_uri,subject_type,observed_at,effective_at,sequence,previous_event_uri,idempotency_key,envelope_hash,envelope,published_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15) RETURNING *`,[id,input.nodeId,input.workspaceId,event.event.id,event.event.type,event.subject.uri,event.subject.type,event.temporal.observed_at,event.temporal.effective_at??null,event.integrity.sequence,event.integrity.previous_event??null,event.integrity.idempotency_key,event.integrity.hash,JSON.stringify(event),input.principalId]);return {row:row.rows[0],created:true};
 }
 
+export async function publishKnowledgeEventAsCkep(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;knowledgeEventId:string}){
+  const scope=await client.query(`SELECT n.slug AS authority FROM workspaces w JOIN nodes n ON n.id=w.node_id WHERE w.id=$1 AND w.node_id=$2`,[input.workspaceId,input.nodeId]);if(scope.rowCount!==1)throw Object.assign(new Error("CKEP_WORKSPACE_NOT_FOUND"),{statusCode:404});
+  const event=await client.query(`SELECT * FROM knowledge_events WHERE id=$1 AND node_id=$2 AND workspace_id=$3`,[input.knowledgeEventId,input.nodeId,input.workspaceId]);if(event.rowCount!==1)throw Object.assign(new Error("KNOWLEDGE_EVENT_NOT_FOUND"),{statusCode:404});
+  const impacts=await client.query(`SELECT impacted_type,impacted_id,impact_kind,confidence,details FROM knowledge_event_impacts WHERE event_id=$1 ORDER BY impacted_type,impacted_id,impact_kind`,[input.knowledgeEventId]);
+  const latest=await client.query(`SELECT sequence,event_uri FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 ORDER BY sequence DESC LIMIT 1`,[input.nodeId,input.workspaceId]);const sequence=latest.rowCount===0?1:Number(latest.rows[0].sequence)+1;
+  const previousEventId=latest.rowCount===0?null:String(latest.rows[0].event_uri).split('/').pop()!;
+  const envelope=mapScopedKnowledgeEventToCkep({authority:scope.rows[0].authority,nodeId:input.nodeId,workspaceId:input.workspaceId,row:event.rows[0],impacts:impacts.rows,sequence,previousEventId});
+  return appendCkepEvent(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,envelope});
+}
+
 export async function queryCkepEvents(client:PoolClient,input:{nodeId:string;workspaceId:string;eventTypes?:string[];subjectType?:string;subjectUri?:string;afterSequence?:number;limit?:number}){const params:any[]=[input.nodeId,input.workspaceId,Math.max(0,input.afterSequence??0),Math.max(1,Math.min(200,input.limit??50))];const filters=[`node_id=$1`,`workspace_id=$2`,`sequence>$3`];if(input.eventTypes?.length){params.push(input.eventTypes);filters.push(`event_type=ANY($${params.length}::text[])`);}if(input.subjectType){params.push(input.subjectType);filters.push(`subject_type=$${params.length}`);}if(input.subjectUri){params.push(input.subjectUri);filters.push(`subject_uri=$${params.length}`);}return (await client.query(`SELECT * FROM ckep_event_journal WHERE ${filters.join(" AND ")} ORDER BY sequence ASC LIMIT $4`,params)).rows;}
-
 export async function replayCkepStream(client:PoolClient,input:{nodeId:string;workspaceId:string;fromSequence?:number;toSequence?:number;limit?:number}){const params:any[]=[input.nodeId,input.workspaceId,Math.max(1,input.fromSequence??1),Math.max(1,Math.min(500,input.limit??100))];let upper="";if(input.toSequence!=null){params.push(input.toSequence);upper=` AND sequence <= $${params.length}`;}return (await client.query(`SELECT sequence,event_uri,envelope FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 AND sequence >= $3${upper} ORDER BY sequence ASC LIMIT $4`,params)).rows;}
-
 export async function createCkepSubscription(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;name:string;eventTypes?:string[];subjectTypes?:string[];subjectUris?:string[];minConfidence?:number}){if(!input.name?.trim())throw Object.assign(new Error("CKEP_SUBSCRIPTION_NAME_REQUIRED"),{statusCode:400});const id=uuidv7();const row=await client.query(`INSERT INTO ckep_subscriptions(id,node_id,workspace_id,principal_id,name,event_types,subject_types,subject_uris,min_confidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[id,input.nodeId,input.workspaceId,input.principalId,input.name.trim(),input.eventTypes??[],input.subjectTypes??[],input.subjectUris??[],Math.max(0,Math.min(1,input.minConfidence??0))]);return row.rows[0];}
-
 export async function pollCkepSubscription(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;subscriptionId:string;limit?:number}){const subResult=await client.query(`SELECT * FROM ckep_subscriptions WHERE id=$1 AND node_id=$2 AND workspace_id=$3 AND principal_id=$4 AND enabled=true FOR UPDATE`,[input.subscriptionId,input.nodeId,input.workspaceId,input.principalId]);if(subResult.rowCount!==1)throw Object.assign(new Error("CKEP_SUBSCRIPTION_NOT_FOUND"),{statusCode:404});const sub=subResult.rows[0],limit=Math.max(1,Math.min(100,input.limit??25));const events=await client.query(`SELECT j.* FROM ckep_event_journal j WHERE j.node_id=$1 AND j.workspace_id=$2 AND j.sequence>$3 AND (cardinality($4::text[])=0 OR j.event_type=ANY($4::text[])) AND (cardinality($5::text[])=0 OR j.subject_type=ANY($5::text[])) AND (cardinality($6::text[])=0 OR j.subject_uri=ANY($6::text[])) AND COALESCE((j.envelope->'epistemics'->>'confidence')::real,0) >= $7 ORDER BY j.sequence ASC LIMIT $8`,[input.nodeId,input.workspaceId,sub.cursor_sequence,sub.event_types,sub.subject_types,sub.subject_uris,sub.min_confidence,limit]);for(const event of events.rows)await client.query(`INSERT INTO ckep_delivery_receipts(id,subscription_id,journal_event_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[uuidv7(),sub.id,event.id]);if(events.rows.length)await client.query(`UPDATE ckep_subscriptions SET cursor_sequence=$2,updated_at=now() WHERE id=$1`,[sub.id,events.rows[events.rows.length-1].sequence]);return events.rows;}

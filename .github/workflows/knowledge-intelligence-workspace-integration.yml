@@ -40,11 +40,13 @@ jobs:
           PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
           npx tsx scripts/validate-knowledge-intelligence-workspace.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/kiw-result.json
           jq -e '.ui_complete == true and .local_complete == true and .workspace_isolated == true' /tmp/kiw-result.json >/dev/null
+          jq -e '.unscoped_blocked == true and .contradiction_isolated == true' /tmp/kiw-result.json >/dev/null
           jq -e '.views.timeline > 0 and .views.changes > 0 and .views.claims > 0 and .views.decisions > 0 and .views.contradictions > 0 and .views.sources > 0 and .views.health > 0 and .views.agents > 0' /tmp/kiw-result.json >/dev/null
       - name: Validate product contracts
         run: |
           grep -q 'renderKnowledgeIntelligenceWorkspace' apps/api/src/workspace-routes.ts
           grep -q '/v1/workspace/intelligence' apps/api/src/workspace-routes.ts
+          grep -q 'WORKSPACE_SCOPE_REQUIRED' apps/api/src/intelligence-workspace.ts
           grep -q 'Ask CERVEL' apps/web/src/intelligence-workspace-ui.ts
           grep -q 'Knowledge Graph' apps/web/src/intelligence-workspace-ui.ts
           grep -q 'Contradictions' apps/web/src/intelligence-workspace-ui.ts

@@ -47,11 +47,12 @@ jobs:
           jq -e '.first_created == true and .duplicate_idempotent == true and .publish_bridge == true and .publish_retry_safe == true' /tmp/runtime.json >/dev/null
           jq -e '.sequence_blocked == true and .workspace_blocked == true and .immutable == true' /tmp/runtime.json >/dev/null
           jq -e '.query_count == 2 and .replay_count == 2 and .delivered_count == 2 and .replay_safe == true and .receipt_count == 2' /tmp/runtime.json >/dev/null
-          jq -e '.sequences == [1,2]' /tmp/runtime.json >/dev/null
+          jq -e '.concurrent_publish_created == 2 and .final_sequences == [1,2,3,4]' /tmp/runtime.json >/dev/null
       - name: Validate runtime contracts
         run: |
           grep -q 'appendCkepEvent' apps/api/src/ckep-runtime.ts
           grep -q 'publishKnowledgeEventAsCkep' apps/api/src/ckep-runtime.ts
+          grep -q 'pg_advisory_xact_lock' apps/api/src/ckep-runtime.ts
           grep -q '/v1/ckep/replay' apps/api/src/ckep-routes.ts
           grep -q '/v1/ckep/publish/' apps/api/src/ckep-routes.ts
           grep -q 'CKEP_PREVIOUS_EVENT_MISMATCH' apps/api/src/ckep-runtime.ts

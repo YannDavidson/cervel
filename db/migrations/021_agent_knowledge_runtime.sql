@@ -59,6 +59,8 @@ CREATE TABLE agent_subscriptions (
   min_confidence real NOT NULL DEFAULT 0.55 CHECK (min_confidence BETWEEN 0 AND 1),
   enabled boolean NOT NULL DEFAULT true,
   cursor_at timestamptz NOT NULL DEFAULT 'epoch',
+  cursor_event_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+  cursor_alert_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY(agent_id,node_id) REFERENCES agent_identities(id,node_id) ON DELETE CASCADE,
   UNIQUE(agent_id,workspace_id,watch_id)

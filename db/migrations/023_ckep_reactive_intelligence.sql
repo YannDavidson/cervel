@@ -26,4 +26,10 @@ CREATE TABLE ckep_reactive_dispatches (
 );
 CREATE INDEX ckep_reactive_dispatches_scope_idx ON ckep_reactive_dispatches(node_id,workspace_id,status,started_at DESC);
 
+ALTER TABLE agent_subscriptions ADD COLUMN IF NOT EXISTS ckep_cursor_sequence bigint NOT NULL DEFAULT 0 CHECK (ckep_cursor_sequence >= 0);
+ALTER TABLE agent_delivery_receipts ADD COLUMN IF NOT EXISTS ckep_journal_event_id uuid REFERENCES ckep_event_journal(id) ON DELETE CASCADE;
+ALTER TABLE agent_delivery_receipts DROP CONSTRAINT IF EXISTS agent_delivery_receipts_check;
+ALTER TABLE agent_delivery_receipts ADD CONSTRAINT agent_delivery_receipts_check CHECK (event_id IS NOT NULL OR alert_id IS NOT NULL OR ckep_journal_event_id IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_delivery_ckep_uidx ON agent_delivery_receipts(subscription_id,ckep_journal_event_id) WHERE ckep_journal_event_id IS NOT NULL;
+
 COMMIT;

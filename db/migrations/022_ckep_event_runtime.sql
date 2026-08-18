@@ -25,6 +25,14 @@ CREATE INDEX ckep_event_journal_scope_time_idx ON ckep_event_journal(node_id,wor
 CREATE INDEX ckep_event_journal_type_idx ON ckep_event_journal(node_id,workspace_id,event_type,sequence DESC);
 CREATE INDEX ckep_event_journal_subject_idx ON ckep_event_journal(node_id,workspace_id,subject_uri,sequence DESC);
 
+CREATE OR REPLACE FUNCTION reject_ckep_journal_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'CKEP_EVENT_JOURNAL_IMMUTABLE' USING ERRCODE='55000';
+END;
+$$;
+CREATE TRIGGER ckep_event_journal_no_update BEFORE UPDATE ON ckep_event_journal FOR EACH ROW EXECUTE FUNCTION reject_ckep_journal_mutation();
+CREATE TRIGGER ckep_event_journal_no_delete BEFORE DELETE ON ckep_event_journal FOR EACH ROW EXECUTE FUNCTION reject_ckep_journal_mutation();
+
 CREATE TABLE ckep_subscriptions (
   id uuid PRIMARY KEY,
   node_id uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,

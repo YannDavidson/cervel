@@ -1,0 +1,56 @@
+name: CKEP Reactive Intelligence Integration
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  ckep-reactive-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Validate reactive intelligence schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT journal_event_id,knowledge_event_id,status,impact_count,watch_match_count FROM ckep_reactive_dispatches LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT ckep_cursor_sequence FROM agent_subscriptions LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT ckep_journal_event_id FROM agent_delivery_receipts LIMIT 0;"
+      - name: Validate CKEP reactive chain
+        run: |
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          npx tsx scripts/validate-ckep-reactive-intelligence.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/reactive.json
+          jq -e '.journal_created == true and .dispatch_status == "succeeded"' /tmp/reactive.json >/dev/null
+          jq -e '.impact_kind == "affected" and .watch_alert == true' /tmp/reactive.json >/dev/null
+          jq -e '.agent_signal_count == 1 and .agent_sequence == 1 and .workspace_isolated == true' /tmp/reactive.json >/dev/null
+      - name: Validate convergence contracts
+        run: |
+          grep -q 'publishKnowledgeEventAsCkep' apps/api/src/evolution-routes.ts
+          grep -q 'dispatchCkepJournalEvent' apps/api/src/evolution-routes.ts
+          grep -q 'propagateKnowledgeImpact' apps/api/src/ckep-reactive.ts
+          grep -q 'evaluateEventForWatches' apps/api/src/ckep-reactive.ts
+          grep -q 'pollAgentCkepSignals' apps/api/src/agent-routes.ts

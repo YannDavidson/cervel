@@ -16,13 +16,13 @@ async function main(){
     const decision=await createKnowledgeObject(client,{nodeId,workspaceId,type:"decision",title:"Ship Project Alpha",summary:"Decision intelligence fixture",createdBy:adminId,nodeAuthority:node.slug});
     const foreign=await createKnowledgeObject(client,{nodeId,workspaceId:otherWorkspace,type:"decision",title:"Foreign Decision",summary:"Must remain isolated",createdBy:adminId,nodeAuthority:node.slug});
 
-    const fragmentId=uuidv7();
-    await client.query(`INSERT INTO fragments(id,node_id,cko_id,type,ordinal,text_content) VALUES($1,$2,$3,'text',0,'Project Alpha launches in September')`,[fragmentId,nodeId,decision.id]);
-    const claimA=uuidv7(),claimB=uuidv7();
-    await client.query(`INSERT INTO claims(id,node_id,subject_type,subject_id,predicate,object_kind,literal_value,literal_datatype,epistemic_status,confidence,created_by) VALUES($1,$2,'cko',$3,'launch_month','literal',$4::jsonb,'application/json','claimed',.9,$5),($6,$2,'cko',$3,'launch_month','literal',$7::jsonb,'application/json','claimed',.8,$5)`,[claimA,nodeId,decision.id,JSON.stringify("September"),adminId,claimB,JSON.stringify("October")]);
-    await client.query(`INSERT INTO claim_evidence(claim_id,fragment_id,evidence_role) VALUES($1,$3,'support'),($2,$3,'support')`,[claimA,claimB,fragmentId]);
-    const conflictId=uuidv7();
-    await client.query(`INSERT INTO claim_conflicts(id,node_id,claim_a_id,claim_b_id,conflict_type,confidence,details) VALUES($1,$2,$3,$4,'value',.88,'{}'::jsonb)`,[conflictId,nodeId,claimA,claimB]);
+    const fragmentId=uuidv7(),foreignFragmentId=uuidv7();
+    await client.query(`INSERT INTO fragments(id,node_id,cko_id,type,ordinal,text_content) VALUES($1,$2,$3,'text',0,'Project Alpha launches in September'),($4,$2,$5,'text',0,'Foreign project launches in December')`,[fragmentId,nodeId,decision.id,foreignFragmentId,foreign.id]);
+    const claimA=uuidv7(),claimB=uuidv7(),foreignClaim=uuidv7();
+    await client.query(`INSERT INTO claims(id,node_id,subject_type,subject_id,predicate,object_kind,literal_value,literal_datatype,epistemic_status,confidence,created_by) VALUES($1,$2,'cko',$3,'launch_month','literal',$4::jsonb,'application/json','claimed',.9,$5),($6,$2,'cko',$3,'launch_month','literal',$7::jsonb,'application/json','claimed',.8,$5),($8,$2,'cko',$9,'launch_month','literal',$10::jsonb,'application/json','claimed',.7,$5)`,[claimA,nodeId,decision.id,JSON.stringify("September"),adminId,claimB,JSON.stringify("October"),foreignClaim,foreign.id,JSON.stringify("December")]);
+    await client.query(`INSERT INTO claim_evidence(claim_id,fragment_id,evidence_role) VALUES($1,$3,'support'),($2,$3,'support'),($4,$5,'support')`,[claimA,claimB,fragmentId,foreignClaim,foreignFragmentId]);
+    const conflictId=uuidv7(),mixedConflictId=uuidv7();
+    await client.query(`INSERT INTO claim_conflicts(id,node_id,claim_a_id,claim_b_id,conflict_type,confidence,details) VALUES($1,$2,$3,$4,'value',.88,'{}'::jsonb),($5,$2,$3,$6,'value',.77,'{}'::jsonb)`,[conflictId,nodeId,claimA,claimB,mixedConflictId,foreignClaim]);
 
     const storage=(await client.query(`SELECT id FROM storage_locations WHERE node_id=$1 ORDER BY is_primary DESC LIMIT 1`,[nodeId])).rows[0];
     if(!storage) throw new Error("storage missing");
@@ -44,6 +44,9 @@ async function main(){
     await client.query(`INSERT INTO agent_identities(id,node_id,principal_id,name,kind,capabilities) VALUES($1,$2,$3,'Workspace Intelligence Agent','internal',$4)`,[agentId,nodeId,agentPrincipal,["memory","signals"]]);
     await client.query(`INSERT INTO agent_workspace_grants(agent_id,node_id,workspace_id,permissions,created_by) VALUES($1,$2,$3,$4,$5)`,[agentId,nodeId,workspaceId,["memory:read","events:read"],adminId]);
 
+    let unscopedBlocked=false;
+    try{await loadKnowledgeIntelligenceWorkspace(client,{node_id:nodeId,workspace_id:null,principal_id:adminId});}catch(error:any){unscopedBlocked=error?.message==="WORKSPACE_SCOPE_REQUIRED";}
+
     const local=await loadKnowledgeIntelligenceWorkspace(client,{node_id:nodeId,workspace_id:workspaceId,principal_id:adminId});
     const foreignView=await loadKnowledgeIntelligenceWorkspace(client,{node_id:nodeId,workspace_id:otherWorkspace,principal_id:adminId});
     const html=renderKnowledgeIntelligenceWorkspace();
@@ -51,7 +54,8 @@ async function main(){
     const uiComplete=navLabels.every(label=>html.includes(label));
     const localComplete=local.decisions.some((x:any)=>x.id===decision.id)&&local.timeline.some((x:any)=>x.id===eventId)&&local.changes.some((x:any)=>x.id===diffId)&&local.claims.some((x:any)=>x.id===claimA)&&local.contradictions.some((x:any)=>x.id===conflictId)&&local.sources.some((x:any)=>x.id===sourceId)&&local.health.length>0&&local.agents.some((x:any)=>x.id===agentId);
     const isolated=!foreignView.decisions.some((x:any)=>x.id===decision.id)&&!foreignView.timeline.some((x:any)=>x.id===eventId)&&!foreignView.claims.some((x:any)=>x.id===claimA)&&!foreignView.sources.some((x:any)=>x.id===sourceId)&&!foreignView.agents.some((x:any)=>x.id===agentId)&&foreignView.decisions.some((x:any)=>x.id===foreign.id);
-    return {ui_complete:uiComplete,local_complete:localComplete,workspace_isolated:isolated,health_score:local.overview.health_score,views:{timeline:local.timeline.length,changes:local.changes.length,claims:local.claims.length,decisions:local.decisions.length,contradictions:local.contradictions.length,sources:local.sources.length,health:local.health.length,agents:local.agents.length}};
+    const contradictionIsolated=!local.contradictions.some((x:any)=>x.id===mixedConflictId)&&!foreignView.contradictions.some((x:any)=>x.id===mixedConflictId);
+    return {ui_complete:uiComplete,local_complete:localComplete,workspace_isolated:isolated,unscoped_blocked:unscopedBlocked,contradiction_isolated:contradictionIsolated,health_score:local.overview.health_score,views:{timeline:local.timeline.length,changes:local.changes.length,claims:local.claims.length,decisions:local.decisions.length,contradictions:local.contradictions.length,sources:local.sources.length,health:local.health.length,agents:local.agents.length}};
   });
   console.log(JSON.stringify(result));
 }

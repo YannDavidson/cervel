@@ -1,0 +1,53 @@
+name: CKEP v0.1 Foundation Integration
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  ckep-foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Validate schema artifact
+        run: |
+          node -e "const s=require('./packages/ckep/schema/ckep-v0.1.schema.json'); if(s.properties.ckep.const!=='0.1'||!s.properties.integrity||!s.properties.causality) process.exit(1)"
+      - name: Validate legacy mapping and protocol invariants
+        run: |
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          npx tsx scripts/validate-ckep-v0.1.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/ckep-result.json
+          jq -e '.valid == true and .identity_scoped == true and .temporal_distinct == true' /tmp/ckep-result.json >/dev/null
+          jq -e '.idempotent == true and .workspace_blocked == true and .node_blocked == true' /tmp/ckep-result.json >/dev/null
+          jq -e '.impact_mapped == true and .provenance_mapped == true and .sequence == 1' /tmp/ckep-result.json >/dev/null
+      - name: Validate protocol contracts
+        run: |
+          grep -q 'cke://<node-authority>/workspaces/<workspace-id>/events/<event-id>' docs/ckep-v0.1-spec.md
+          grep -q 'CKEP_WORKSPACE_SCOPE_MISMATCH' packages/ckep/src/legacy.ts
+          grep -q 'CKEP_HASH_MISMATCH' packages/ckep/src/index.ts
+          grep -q 'idempotency_key' packages/ckep/schema/ckep-v0.1.schema.json

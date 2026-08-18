@@ -40,18 +40,22 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT permissions FROM agent_workspace_grants LIMIT 0;"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT observation,created_claim_id FROM agent_observations LIMIT 0;"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT watch_id,event_types,impact_kinds,cursor_at FROM agent_subscriptions LIMIT 0;"
-      - name: Validate durable permission-aware memory
+      - name: Validate durable permission-aware agent loop
         run: |
           NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
           WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
           PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
           npx tsx scripts/validate-agent-runtime.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/agent-result.json
           jq -e '.tenant_blocked == true' /tmp/agent-result.json >/dev/null
-          jq -e '.claim_id != null' /tmp/agent-result.json >/dev/null
+          jq -e '.subject_blocked == true' /tmp/agent-result.json >/dev/null
+          jq -e '.claim_id != null and .claim_status == "claimed"' /tmp/agent-result.json >/dev/null
           jq -e '.claim_agent_id == .agent_id' /tmp/agent-result.json >/dev/null
+          jq -e '.context_id != null' /tmp/agent-result.json >/dev/null
       - name: Validate runtime contracts
         run: |
           grep -q 'registerAgentRoutes' apps/api/src/server.ts
           grep -q 'assembleContextPackage' apps/api/src/agent-runtime.ts
           grep -q 'watch_alerts' apps/api/src/agent-runtime.ts
           grep -q 'knowledge_events' apps/api/src/agent-runtime.ts
+          grep -q 'knowledge_event_impacts' apps/api/src/agent-runtime.ts
+          grep -q 'AGENT_WATCH_PERMISSION_DENIED' apps/api/src/agent-runtime.ts

@@ -3,7 +3,9 @@ import { withTransaction } from "./db";
 import { assembleContextPackage } from "./context";
 import { executeSemanticKnowledgeReasoning } from "./semantic-reasoning";
 import { createWorkspaceSession, resolveWorkspaceSession, revokeWorkspaceSession, workspaceBootstrap, listWorkspaceObjects, loadWorkspaceObject, listSemanticEntities, loadSemanticEntity, loadGraph } from "./workspace";
+import { loadKnowledgeIntelligenceWorkspace } from "./intelligence-workspace";
 import { renderWorkspaceAlpha } from "../../web/src/workspace-ui";
+import { renderKnowledgeIntelligenceWorkspace } from "../../web/src/intelligence-workspace-ui";
 import { registerIdentityRoutes } from "./identity-routes";
 import { registerExperienceRoutes } from "./experience-routes";
 
@@ -20,7 +22,8 @@ async function session(request: FastifyRequest) { return withTransaction(client 
 export function registerWorkspaceRoutes(app: FastifyInstance) {
   registerIdentityRoutes(app);
   registerExperienceRoutes(app);
-  app.get("/workspace", async (_request, reply) => reply.type("text/html; charset=utf-8").send(renderWorkspaceAlpha()));
+  app.get("/workspace", async (_request, reply) => reply.type("text/html; charset=utf-8").send(renderKnowledgeIntelligenceWorkspace()));
+  app.get("/workspace/alpha", async (_request, reply) => reply.type("text/html; charset=utf-8").send(renderWorkspaceAlpha()));
 
   // Legacy Alpha bootstrap session remains available for local/dev environments only.
   app.post("/v1/session", async (request, reply) => {
@@ -39,6 +42,7 @@ export function registerWorkspaceRoutes(app: FastifyInstance) {
   });
 
   app.get("/v1/workspace", async (request, reply) => { const s = await session(request); return reply.send(await withTransaction(client => workspaceBootstrap(client, s))); });
+  app.get("/v1/workspace/intelligence", async (request, reply) => { const s = await session(request); return reply.send(await withTransaction(client => loadKnowledgeIntelligenceWorkspace(client, s))); });
   app.get("/v1/workspace/objects", async (request, reply) => { const s = await session(request); const { q } = request.query as { q?: string }; return reply.send(await withTransaction(client => listWorkspaceObjects(client, s, q))); });
   app.get("/v1/workspace/objects/:id", async (request, reply) => { const s = await session(request); const { id } = request.params as { id: string }; return reply.send(await withTransaction(client => loadWorkspaceObject(client, s, id))); });
   app.get("/v1/workspace/entities", async (request, reply) => { const s = await session(request); const { q } = request.query as { q?: string }; return reply.send(await withTransaction(client => listSemanticEntities(client, s, q))); });

@@ -54,6 +54,6 @@ jobs:
           jq -e '.why_now_impacts >= 1' /tmp/watch-result.json >/dev/null
       - name: Validate Watch runtime contracts
         run: |
-          grep -q "evaluateEventForWatches" apps/api/src/evolution-routes.ts
+          grep -q "evaluateEventForWatches" apps/api/src/ckep-reactive.ts
           grep -q "/v1/watch/inbox" apps/api/src/watch-routes.ts
           grep -q "matched_impacts" apps/api/src/watch-engine.ts

@@ -4,13 +4,15 @@ import { uuidv7 } from "./uuidv7";
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 const words=(value:string)=>new Set(value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x)=>x.length>1));
 const overlap=(needles:string[],text:string)=>{if(!needles.length)return 1;const hay=words(text);let hit=0;for(const raw of needles){const token=raw.trim().toLowerCase();if(token&&hay.has(token))hit++;}return clamp(hit/needles.length);};
+const intentTerms=(intent:string)=>[...words(intent)].filter((x)=>x.length>=4&&!new Set(["that","this","with","from","when","what","about","into","have","will","your","their","then","than"]).has(x)).slice(0,16);
 const severityFor=(score:number,impactKinds:string[])=>impactKinds.includes("invalidated")||score>=.88?"critical":impactKinds.includes("requires_review")||score>=.7?"important":"info";
 
 export async function createWatch(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;name:string;intent:string;eventTypes?:string[];subjectTypes?:string[];impactKinds?:string[];keywords?:string[];focus?:Record<string,unknown>;minEventConfidence?:number;minImpactConfidence?:number;minScore?:number;cooldownSeconds?:number;channels?:string[]}){
+  if(!input.name?.trim()||!input.intent?.trim())throw Object.assign(new Error("WATCH_NAME_AND_INTENT_REQUIRED"),{statusCode:400});
   const scope=await client.query(`SELECT 1 FROM workspaces w JOIN principals p ON p.id=$3 AND p.node_id=w.node_id WHERE w.id=$1 AND w.node_id=$2`,[input.workspaceId,input.nodeId,input.principalId]);
   if(scope.rowCount!==1)throw Object.assign(new Error("WATCH_SCOPE_INVALID"),{statusCode:403});
   const id=uuidv7();
-  const row=await client.query(`INSERT INTO knowledge_watches(id,node_id,workspace_id,principal_id,name,intent,event_types,subject_types,impact_kinds,keywords,focus,min_event_confidence,min_impact_confidence,min_score,cooldown_seconds,channels) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16) RETURNING *`,[id,input.nodeId,input.workspaceId,input.principalId,input.name,input.intent,input.eventTypes??[],input.subjectTypes??[],input.impactKinds??[],input.keywords??[],JSON.stringify(input.focus??{}),clamp(input.minEventConfidence??.55),clamp(input.minImpactConfidence??.35),clamp(input.minScore??.55),Math.max(0,Math.min(2592000,input.cooldownSeconds??3600)),input.channels?.length?input.channels:["inbox"]]);
+  const row=await client.query(`INSERT INTO knowledge_watches(id,node_id,workspace_id,principal_id,name,intent,event_types,subject_types,impact_kinds,keywords,focus,min_event_confidence,min_impact_confidence,min_score,cooldown_seconds,channels) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16) RETURNING *`,[id,input.nodeId,input.workspaceId,input.principalId,input.name.trim(),input.intent.trim(),input.eventTypes??[],input.subjectTypes??[],input.impactKinds??[],input.keywords??[],JSON.stringify(input.focus??{}),clamp(input.minEventConfidence??.55),clamp(input.minImpactConfidence??.35),clamp(input.minScore??.55),Math.max(0,Math.min(2592000,input.cooldownSeconds??3600)),input.channels?.length?input.channels:["inbox"]]);
   return row.rows[0];
 }
 
@@ -37,8 +39,9 @@ export async function evaluateEventForWatches(client:PoolClient,input:{eventId:s
     if(Number(event.confidence)<Number(watch.min_event_confidence))continue;
     const eligibleImpacts=impacts.filter((x:any)=>Number(x.confidence)>=Number(watch.min_impact_confidence)&&(!watch.impact_kinds?.length||watch.impact_kinds.includes(x.impact_kind)));
     if(watch.impact_kinds?.length&&!eligibleImpacts.length)continue;
-    const text=`${watch.name} ${watch.intent} ${event.summary} ${JSON.stringify(event.details??{})}`;
-    const keywordScore=overlap(watch.keywords??[],text);
+    const eventText=`${event.summary} ${JSON.stringify(event.details??{})} ${eligibleImpacts.map((x:any)=>`${x.impacted_type} ${x.impact_kind} ${JSON.stringify(x.details??{})}`).join(" ")}`;
+    const terms=watch.keywords?.length?watch.keywords:intentTerms(watch.intent);
+    const keywordScore=overlap(terms,eventText);
     const focusScore=focusMatch(watch.focus,event,eligibleImpacts);
     if(focusScore===0)continue;
     const eventScore=clamp(Number(event.confidence??0));
@@ -48,7 +51,7 @@ export async function evaluateEventForWatches(client:PoolClient,input:{eventId:s
     const matchId=uuidv7();
     const recent=await client.query(`SELECT wa.id FROM watch_alerts wa JOIN knowledge_events ke ON ke.id=wa.event_id WHERE wa.watch_id=$1 AND ke.subject_type=$2 AND ke.subject_id=$3 AND wa.surfaced_at > now()-make_interval(secs=>$4) ORDER BY wa.surfaced_at DESC LIMIT 1`,[watch.id,event.subject_type,event.subject_id,Number(watch.cooldown_seconds??0)]);
     const suppressed=recent.rowCount>0;
-    const explanation={watch_intent:watch.intent,event_type:event.event_type,event_confidence:eventScore,impact_confidence:impactScore,keyword_score:keywordScore,focus_score:focusScore,matched_impacts:eligibleImpacts.map((x:any)=>({type:x.impacted_type,id:x.impacted_id,kind:x.impact_kind,confidence:Number(x.confidence),depth:x.depth,path:x.path}))};
+    const explanation={watch_intent:watch.intent,event_type:event.event_type,event_confidence:eventScore,impact_confidence:impactScore,relevance_terms:terms,keyword_score:keywordScore,focus_score:focusScore,matched_impacts:eligibleImpacts.map((x:any)=>({type:x.impacted_type,id:x.impacted_id,kind:x.impact_kind,confidence:Number(x.confidence),depth:x.depth,path:x.path}))};
     await client.query(`INSERT INTO watch_matches(id,watch_id,event_id,node_id,workspace_id,score,event_score,impact_score,keyword_score,focus_score,matched_impact_ids,explanation,suppressed,suppression_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14) ON CONFLICT(watch_id,event_id) DO UPDATE SET score=EXCLUDED.score,event_score=EXCLUDED.event_score,impact_score=EXCLUDED.impact_score,keyword_score=EXCLUDED.keyword_score,focus_score=EXCLUDED.focus_score,matched_impact_ids=EXCLUDED.matched_impact_ids,explanation=EXCLUDED.explanation,suppressed=EXCLUDED.suppressed,suppression_reason=EXCLUDED.suppression_reason`,[matchId,watch.id,event.id,input.nodeId,input.workspaceId,score,eventScore,impactScore,keywordScore,focusScore,eligibleImpacts.map((x:any)=>x.impact_path_id).filter(Boolean),JSON.stringify(explanation),suppressed,suppressed?"cooldown":null]);
     const storedMatch=await client.query(`SELECT id FROM watch_matches WHERE watch_id=$1 AND event_id=$2`,[watch.id,event.id]);
     let alert=null;

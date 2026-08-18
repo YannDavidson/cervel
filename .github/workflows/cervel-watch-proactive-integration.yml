@@ -1,0 +1,59 @@
+name: CERVEL Watch Proactive Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['apps/api/**','db/migrations/**','scripts/**','tests/**','package.json','.github/workflows/cervel-watch-proactive-integration.yml']
+jobs:
+  cervel-watch-proactive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap > /tmp/bootstrap.json
+      - name: Validate watch schema
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT intent,event_types,impact_kinds,focus,min_score,cooldown_seconds FROM knowledge_watches LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT score,event_score,impact_score,keyword_score,focus_score,explanation,suppressed FROM watch_matches LIMIT 0;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT severity,why_now,status,surfaced_at FROM watch_alerts LIMIT 0;"
+      - name: Validate proactive watch behavior
+        run: |
+          set -euo pipefail
+          NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
+          WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
+          PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
+          npx tsx scripts/validate-watch-proactive.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/watch-result.json
+          jq -e '.score >= 0.55' /tmp/watch-result.json >/dev/null
+          jq -e '.foreign_matches == 0' /tmp/watch-result.json >/dev/null
+          jq -e '.cooldown_suppressed == true' /tmp/watch-result.json >/dev/null
+          jq -e '.inbox_count == 1' /tmp/watch-result.json >/dev/null
+          jq -e '.why_now_impacts >= 1' /tmp/watch-result.json >/dev/null
+      - name: Validate Watch runtime contracts
+        run: |
+          grep -q "evaluateEventForWatches" apps/api/src/evolution-routes.ts
+          grep -q "/v1/watch/inbox" apps/api/src/watch-routes.ts
+          grep -q "matched_impacts" apps/api/src/watch-engine.ts

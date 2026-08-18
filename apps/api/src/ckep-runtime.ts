@@ -25,6 +25,8 @@ export async function appendCkepEvent(client:PoolClient,input:{nodeId:string;wor
 export async function publishKnowledgeEventAsCkep(client:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string;knowledgeEventId:string}){
   const scope=await client.query(`SELECT n.slug AS authority FROM workspaces w JOIN nodes n ON n.id=w.node_id WHERE w.id=$1 AND w.node_id=$2`,[input.workspaceId,input.nodeId]);if(scope.rowCount!==1)throw Object.assign(new Error("CKEP_WORKSPACE_NOT_FOUND"),{statusCode:404});
   const event=await client.query(`SELECT * FROM knowledge_events WHERE id=$1 AND node_id=$2 AND workspace_id=$3`,[input.knowledgeEventId,input.nodeId,input.workspaceId]);if(event.rowCount!==1)throw Object.assign(new Error("KNOWLEDGE_EVENT_NOT_FOUND"),{statusCode:404});
+  const canonicalUri=`cke://${scope.rows[0].authority}/workspaces/${input.workspaceId}/events/${input.knowledgeEventId}`;
+  const already=await client.query(`SELECT * FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 AND event_uri=$3`,[input.nodeId,input.workspaceId,canonicalUri]);if(already.rowCount===1)return {row:already.rows[0],created:false};
   const impacts=await client.query(`SELECT impacted_type,impacted_id,impact_kind,confidence,details FROM knowledge_event_impacts WHERE event_id=$1 ORDER BY impacted_type,impacted_id,impact_kind`,[input.knowledgeEventId]);
   const latest=await client.query(`SELECT sequence,event_uri FROM ckep_event_journal WHERE node_id=$1 AND workspace_id=$2 ORDER BY sequence DESC LIMIT 1`,[input.nodeId,input.workspaceId]);const sequence=latest.rowCount===0?1:Number(latest.rows[0].sequence)+1;
   const previousEventId=latest.rowCount===0?null:String(latest.rows[0].event_uri).split('/').pop()!;

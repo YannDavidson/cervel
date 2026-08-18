@@ -38,19 +38,22 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT event_uri,sequence,idempotency_key,envelope_hash,envelope FROM ckep_event_journal LIMIT 0;"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT event_types,subject_types,subject_uris,cursor_sequence FROM ckep_subscriptions LIMIT 0;"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT subscription_id,journal_event_id,acknowledged_at FROM ckep_delivery_receipts LIMIT 0;"
-      - name: Validate append replay query subscriptions
+      - name: Validate append publish replay query subscriptions
         run: |
           NODE_ID=$(jq -r .nodeId /tmp/bootstrap.json)
           WORKSPACE_ID=$(jq -r .workspaceId /tmp/bootstrap.json)
           PRINCIPAL_ID=$(jq -r .principalId /tmp/bootstrap.json)
           npx tsx scripts/validate-ckep-event-runtime.ts "$NODE_ID" "$WORKSPACE_ID" "$PRINCIPAL_ID" | tee /tmp/runtime.json
-          jq -e '.first_created == true and .duplicate_idempotent == true and .second_created == true' /tmp/runtime.json >/dev/null
-          jq -e '.sequence_blocked == true and .workspace_blocked == true' /tmp/runtime.json >/dev/null
+          jq -e '.first_created == true and .duplicate_idempotent == true and .publish_bridge == true' /tmp/runtime.json >/dev/null
+          jq -e '.sequence_blocked == true and .workspace_blocked == true and .immutable == true' /tmp/runtime.json >/dev/null
           jq -e '.query_count == 2 and .replay_count == 2 and .delivered_count == 2 and .replay_safe == true and .receipt_count == 2' /tmp/runtime.json >/dev/null
           jq -e '.sequences == [1,2]' /tmp/runtime.json >/dev/null
       - name: Validate runtime contracts
         run: |
           grep -q 'appendCkepEvent' apps/api/src/ckep-runtime.ts
+          grep -q 'publishKnowledgeEventAsCkep' apps/api/src/ckep-runtime.ts
           grep -q '/v1/ckep/replay' apps/api/src/ckep-routes.ts
+          grep -q '/v1/ckep/publish/' apps/api/src/ckep-routes.ts
           grep -q 'CKEP_PREVIOUS_EVENT_MISMATCH' apps/api/src/ckep-runtime.ts
+          grep -q 'CKEP_EVENT_JOURNAL_IMMUTABLE' db/migrations/022_ckep_event_runtime.sql
           grep -q 'registerCkepRoutes' apps/api/src/evolution-routes.ts

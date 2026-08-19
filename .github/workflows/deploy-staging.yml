@@ -78,10 +78,12 @@ jobs:
 
       - name: Build and push immutable image
         run: |
-          echo 'DEPLOY_PHASE=image' >> "$GITHUB_ENV"
+          echo 'DEPLOY_PHASE=image-auth' >> "$GITHUB_ENV"
           gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
           IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CERVEL_STAGING_ARTIFACT_REPO}/cervel:${GITHUB_SHA}"
+          echo 'DEPLOY_PHASE=image-build' >> "$GITHUB_ENV"
           docker build --pull -t "$IMAGE_URI" .
+          echo 'DEPLOY_PHASE=image-push' >> "$GITHUB_ENV"
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 

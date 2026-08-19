@@ -112,8 +112,12 @@ jobs:
       - name: Resolve deployment outputs
         run: |
           echo 'DEPLOY_PHASE=resolve-deploy' >> "$GITHUB_ENV"
-          cat /tmp/cervel-staging-deploy.env >> "$GITHUB_ENV"
-          grep '^CERVEL_STAGING_URL=' /tmp/cervel-staging-deploy.env
+          test -s /tmp/cervel-staging-deploy.env
+          allowed='^(CERVEL_STAGING_URL|CERVEL_NODE_ID|CERVEL_WORKSPACE_ID|GOOGLE_OIDC_CALLBACK|GOOGLE_DRIVE_CALLBACK|DROPBOX_CALLBACK|ONEDRIVE_CALLBACK)='
+          grep -E "$allowed" /tmp/cervel-staging-deploy.env > /tmp/cervel-staging-env.clean
+          test "$(wc -l < /tmp/cervel-staging-env.clean)" -eq 7
+          cat /tmp/cervel-staging-env.clean >> "$GITHUB_ENV"
+          grep -q '^CERVEL_STAGING_URL=https://' /tmp/cervel-staging-env.clean
 
       - name: Live smoke validation
         run: |

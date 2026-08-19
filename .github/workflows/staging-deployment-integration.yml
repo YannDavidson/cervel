@@ -64,6 +64,8 @@ jobs:
           grep -q 'gcloud run jobs deploy cervel-staging-ckep-drain' infra/gcp/staging/deploy.sh
           grep -q 'https://storage.googleapis.com' infra/gcp/staging/deploy.sh
           grep -q 'CERVEL_STORAGE_MANAGED=true' infra/gcp/staging/deploy.sh
+          grep -q -- '--edition=ENTERPRISE' infra/gcp/staging/provision.sh
+          grep -q -- '--assign-ip' infra/gcp/staging/provision.sh
           grep -q 'put_secret_value cervel-staging-s3-access-key' infra/gcp/staging/provision.sh
           grep -q 'put_secret_value cervel-staging-s3-secret-key' infra/gcp/staging/provision.sh
           grep -q 'gcloud sql users set-password' infra/gcp/staging/provision.sh

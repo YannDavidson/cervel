@@ -9,6 +9,10 @@
     "sync:sources": "tsx workers/source-sync.ts",
     "db:migrate": "tsx scripts/db/migrate.ts",
     "db:bootstrap": "tsx scripts/db/bootstrap.ts",
+    "job:migrate": "node dist/scripts/db/migrate.js",
+    "job:source-sync": "node dist/workers/source-sync.js",
+    "job:ckep-drain": "node dist/scripts/ckep-drain.js",
+    "smoke:production": "tsx scripts/production-smoke.ts",
     "test": "jest",
     "test:contracts": "jest tests/contracts",
     "test:ckuri": "jest tests/ckuri"

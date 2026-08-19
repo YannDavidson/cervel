@@ -1,0 +1,76 @@
+name: CERVEL Production Foundation Integration
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  production-foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel-ci
+      S3_ACCESS_KEY_ID: production-ci-key
+      S3_SECRET_ACCESS_KEY: production-ci-secret
+      CERVEL_CONNECTOR_TOKEN_KEY: production-ci-connector-key
+      CERVEL_AUTOMATION_KEY: production-ci-automation-key
+      CERVEL_NODE_AUTHORITY: ci
+      CERVEL_RUNTIME_MODE: production
+      CERVEL_ENVIRONMENT_ID: ci-production
+      CERVEL_PUBLIC_BASE_URL: https://cervel-ci.invalid
+      CERVEL_ALLOW_ALPHA_LOGIN: 'false'
+      CERVEL_TRUST_PRINCIPAL_HEADER: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - name: Validate migration serialization
+        run: grep -q 'pg_advisory_lock' scripts/db/migrate.ts
+      - name: Build production image
+        run: docker build -t cervel-production:${{ github.sha }} .
+      - name: Validate production image assets
+        run: |
+          docker run --rm --entrypoint sh cervel-production:${{ github.sha }} -c 'test -f dist/scripts/db/migrate.js && test -f dist/scripts/ckep-drain.js && test -d db/migrations'
+      - name: Validate managed-runtime fail closed
+        run: |
+          set +e
+          CERVEL_ALLOW_ALPHA_LOGIN=true npx tsx -e 'import {assertProductionConfiguration} from "./apps/api/src/production"; assertProductionConfiguration()' >/tmp/failclosed.log 2>&1
+          test $? -ne 0
+          grep -q ALPHA_LOGIN_FORBIDDEN_IN_MANAGED_RUNTIME /tmp/failclosed.log
+      - name: Start production runtime
+        run: |
+          PORT=8787 npm run start:api >/tmp/cervel-production.log 2>&1 &
+          echo $! >/tmp/cervel.pid
+          for i in {1..30}; do curl -fsS http://127.0.0.1:8787/ready && break; sleep 1; done
+      - name: Validate liveness, readiness and header boundary
+        run: |
+          curl -fsS http://127.0.0.1:8787/live | grep -q '"ok":true'
+          curl -fsS http://127.0.0.1:8787/ready | grep -q '"database":true'
+          test "$(curl -s -o /tmp/header.json -w '%{http_code}' -H 'X-CERVEL-PRINCIPAL-ID: 00000000-0000-7000-8000-000000000000' http://127.0.0.1:8787/health)" = "401"
+          grep -q PRINCIPAL_HEADER_FORBIDDEN_IN_MANAGED_RUNTIME /tmp/header.json
+      - name: Validate production contracts
+        run: |
+          grep -q 'USER cervel' Dockerfile
+          grep -q 'COPY --from=build --chown=cervel:cervel /app/db ./db' Dockerfile
+          grep -q 'CERVEL_ENVIRONMENT_ID' apps/api/src/production.ts
+          grep -q 'job:ckep-drain' package.json
+          grep -q 'job:source-sync' package.json
+          grep -q 'job:migrate' package.json
+          grep -q 'dispatchCkepJournalEvent' scripts/ckep-drain.ts
+      - name: Graceful termination
+        run: |
+          kill -TERM $(cat /tmp/cervel.pid)
+          for i in {1..20}; do if ! kill -0 $(cat /tmp/cervel.pid) 2>/dev/null; then exit 0; fi; sleep 1; done
+          echo 'server did not terminate gracefully'; cat /tmp/cervel-production.log; exit 1

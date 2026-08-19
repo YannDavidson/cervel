@@ -4,6 +4,7 @@ const endpoint = process.env.S3_ENDPOINT;
 const region = process.env.S3_REGION ?? "us-east-1";
 const accessKeyId = process.env.S3_ACCESS_KEY_ID;
 const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+const managedBucket = process.env.CERVEL_STORAGE_MANAGED === "true";
 
 if (!endpoint || !accessKeyId || !secretAccessKey) {
   throw new Error("S3_ENDPOINT, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required");
@@ -21,7 +22,8 @@ export const s3 = new S3Client({
 export async function ensureBucket(): Promise<void> {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
-  } catch {
+  } catch (error) {
+    if (managedBucket) throw Object.assign(new Error("MANAGED_STORAGE_BUCKET_UNAVAILABLE"),{cause:error});
     await s3.send(new CreateBucketCommand({ Bucket: bucket }));
   }
 }

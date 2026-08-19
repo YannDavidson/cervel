@@ -14,6 +14,8 @@ RUNTIME_SA="${RUNTIME_SA_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
 
 secret_exists(){ gcloud secrets describe "$1" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; }
 ensure_secret(){ local name="$1" value="$2"; if ! secret_exists "$name"; then printf '%s' "$value" | gcloud secrets create "$name" --project "$GCP_PROJECT_ID" --replication-policy=automatic --data-file=- >/dev/null; fi; }
+put_secret_value(){ local name="$1" value="$2"; if secret_exists "$name"; then printf '%s' "$value" | gcloud secrets versions add "$name" --project "$GCP_PROJECT_ID" --data-file=- >/dev/null; else printf '%s' "$value" | gcloud secrets create "$name" --project "$GCP_PROJECT_ID" --replication-policy=automatic --data-file=- >/dev/null; fi; }
+secret_value(){ gcloud secrets versions access latest --secret "$1" --project "$GCP_PROJECT_ID"; }
 random_secret(){ openssl rand -base64 48 | tr -d '\n'; }
 
 gcloud config set project "$GCP_PROJECT_ID" >/dev/null
@@ -42,14 +44,11 @@ if ! gcloud sql databases describe "$DB_NAME" --instance "$SQL_INSTANCE" --proje
   gcloud sql databases create "$DB_NAME" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null
 fi
 
-if ! secret_exists cervel-staging-db-password; then
-  DB_PASSWORD="$(random_secret)"
-  ensure_secret cervel-staging-db-password "$DB_PASSWORD"
-  if gcloud sql users list --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --format='value(name)' | grep -Fxq "$DB_USER"; then
-    gcloud sql users set-password "$DB_USER" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --password="$DB_PASSWORD" >/dev/null
-  else
-    gcloud sql users create "$DB_USER" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --password="$DB_PASSWORD" >/dev/null
-  fi
+if secret_exists cervel-staging-db-password; then DB_PASSWORD="$(secret_value cervel-staging-db-password)"; else DB_PASSWORD="$(random_secret)"; ensure_secret cervel-staging-db-password "$DB_PASSWORD"; fi
+if gcloud sql users list --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --format='value(name)' | grep -Fxq "$DB_USER"; then
+  gcloud sql users set-password "$DB_USER" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --password="$DB_PASSWORD" >/dev/null
+else
+  gcloud sql users create "$DB_USER" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --password="$DB_PASSWORD" >/dev/null
 fi
 
 ensure_secret cervel-staging-connector-token-key "$(random_secret)"
@@ -61,8 +60,8 @@ if ! secret_exists cervel-staging-s3-access-key || ! secret_exists cervel-stagin
   SECRET_KEY="$(printf '%s' "$HMAC_JSON" | jq -r '.secret')"
   test -n "$ACCESS_ID" && test "$ACCESS_ID" != null
   test -n "$SECRET_KEY" && test "$SECRET_KEY" != null
-  ensure_secret cervel-staging-s3-access-key "$ACCESS_ID"
-  ensure_secret cervel-staging-s3-secret-key "$SECRET_KEY"
+  put_secret_value cervel-staging-s3-access-key "$ACCESS_ID"
+  put_secret_value cervel-staging-s3-secret-key "$SECRET_KEY"
 fi
 
 CONNECTION_NAME="$(gcloud sql instances describe "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --format='value(connectionName)')"

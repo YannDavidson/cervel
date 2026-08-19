@@ -20,7 +20,18 @@ CORE_ENV="CERVEL_RUNTIME_MODE=staging,CERVEL_ENVIRONMENT_ID=staging,CERVEL_NODE_
 CORE_SECRETS="DB_PASS=cervel-staging-db-password:latest,S3_ACCESS_KEY_ID=cervel-staging-s3-access-key:latest,S3_SECRET_ACCESS_KEY=cervel-staging-s3-secret-key:latest,CERVEL_CONNECTOR_TOKEN_KEY=cervel-staging-connector-token-key:latest,CERVEL_AUTOMATION_KEY=cervel-staging-automation-key:latest"
 
 mark_phase migration-job-deploy
-gcloud run jobs deploy cervel-staging-migrate --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --image "$IMAGE_URI" --service-account "$RUNTIME_SA" --set-cloudsql-instances "$CONNECTION_NAME" --command node --args dist/scripts/db/migrate.js --set-env-vars "DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET}" --set-secrets "DB_PASS=cervel-staging-db-password:latest" --tasks 1 --max-retries 0 --task-timeout 20m --quiet >/dev/null
+if ! gcloud run jobs deploy cervel-staging-migrate --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --image "$IMAGE_URI" --service-account "$RUNTIME_SA" --set-cloudsql-instances "$CONNECTION_NAME" --command node --args dist/scripts/db/migrate.js --set-env-vars "DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET}" --set-secrets "DB_PASS=cervel-staging-db-password:latest" --tasks 1 --max-retries 0 --task-timeout 20m --quiet 2>&1 | tee /tmp/cervel-migration-job-deploy.log; then
+  phase=migration-job-deploy-other
+  if grep -Eqi 'iam.serviceAccounts.actAs|actAs|service account user' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-actas; fi
+  if grep -Eqi 'secretmanager|secret.*access|secret.*permission|Secret Manager' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-secret; fi
+  if grep -Eqi 'cloudsql|Cloud SQL|sqladmin' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-cloudsql; fi
+  if grep -Eqi 'artifactregistry|container image|image.*not found|image.*permission' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-image; fi
+  if grep -Eqi 'service agent' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-service-agent; fi
+  if grep -Eqi 'INVALID_ARGUMENT|unrecognized arguments|invalid value|invalid argument' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-invalid; fi
+  if grep -Eqi 'PERMISSION_DENIED|permission denied|403' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-permission; fi
+  mark_phase "$phase"
+  exit 1
+fi
 mark_phase migration-job-execute
 gcloud run jobs execute cervel-staging-migrate --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --wait --quiet >/dev/null
 

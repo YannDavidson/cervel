@@ -12,6 +12,7 @@
     "apps/**/*.ts",
     "packages/**/*.ts",
     "workers/**/*.ts",
+    "scripts/**/*.ts",
     "tests/**/*.ts"
   ]
 }

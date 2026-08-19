@@ -112,9 +112,21 @@ jobs:
 
       - name: Run recovery jobs once
         run: |
-          echo 'DEPLOY_PHASE=recovery-jobs' >> "$GITHUB_ENV"
-          gcloud run jobs execute cervel-staging-source-sync --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --wait --quiet
-          gcloud run jobs execute cervel-staging-ckep-drain --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --wait --quiet
+          set -o pipefail
+          run_recovery_job() {
+            local job="$1" phase="$2" log="/tmp/${job}-execute.log" execution
+            echo "DEPLOY_PHASE=${phase}" >> "$GITHUB_ENV"
+            if ! gcloud run jobs execute "$job" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --wait --quiet 2>&1 | tee "$log"; then
+              execution="$(sed -n 's/.*Execution \[\([^]]*\)\].*/\1/p; s/.*executions describe \([^ ]*\).*/\1/p' "$log" | tail -1)"
+              if [ -n "$execution" ]; then
+                gcloud run jobs executions describe "$execution" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=yaml || true
+                gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${job}\" AND labels.\"run.googleapis.com/execution_name\"=\"${execution}\"" --project "$GCP_PROJECT_ID" --freshness=30m --limit=100 --order=asc --format='value(timestamp,severity,textPayload,jsonPayload)' || true
+              fi
+              exit 1
+            fi
+          }
+          run_recovery_job cervel-staging-source-sync source-sync-job-execute
+          run_recovery_job cervel-staging-ckep-drain ckep-drain-job-execute
 
       - name: Publish staging summary
         run: |

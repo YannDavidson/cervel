@@ -19,9 +19,6 @@ env:
   GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
   GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
 
-environments:
-  staging: {}
-
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest

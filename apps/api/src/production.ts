@@ -10,10 +10,13 @@ export function runtimeMode(): RuntimeMode {
 
 export function isManagedRuntime(){const mode=runtimeMode();return mode==="staging"||mode==="production";}
 
+function hasDatabaseConfig(){return Boolean(process.env.DATABASE_URL?.trim()||(process.env.DB_USER?.trim()&&process.env.DB_PASS&&process.env.DB_NAME?.trim()&&(process.env.INSTANCE_UNIX_SOCKET?.trim()||process.env.DB_HOST?.trim())));}
+
 export function assertProductionConfiguration(): void {
   if(!isManagedRuntime())return;
-  const required=["DATABASE_URL","S3_ENDPOINT","S3_REGION","S3_BUCKET","S3_ACCESS_KEY_ID","S3_SECRET_ACCESS_KEY","CERVEL_CONNECTOR_TOKEN_KEY","CERVEL_AUTOMATION_KEY","CERVEL_NODE_AUTHORITY","CERVEL_ENVIRONMENT_ID","CERVEL_PUBLIC_BASE_URL"];
+  const required=["S3_ENDPOINT","S3_REGION","S3_BUCKET","S3_ACCESS_KEY_ID","S3_SECRET_ACCESS_KEY","CERVEL_CONNECTOR_TOKEN_KEY","CERVEL_AUTOMATION_KEY","CERVEL_NODE_AUTHORITY","CERVEL_ENVIRONMENT_ID","CERVEL_PUBLIC_BASE_URL"];
   const missing=required.filter(name=>!process.env[name]?.trim());
+  if(!hasDatabaseConfig())missing.unshift("DATABASE_CONFIGURATION");
   if(missing.length)throw new Error(`PRODUCTION_CONFIG_MISSING:${missing.join(",")}`);
   if(process.env.CERVEL_ALLOW_ALPHA_LOGIN==="true")throw new Error("ALPHA_LOGIN_FORBIDDEN_IN_MANAGED_RUNTIME");
   if(process.env.CERVEL_TRUST_PRINCIPAL_HEADER==="true")throw new Error("PRINCIPAL_HEADER_TRUST_FORBIDDEN_IN_MANAGED_RUNTIME");
@@ -21,6 +24,7 @@ export function assertProductionConfiguration(): void {
   if(!/^[a-z0-9][a-z0-9-]{1,62}$/.test(process.env.CERVEL_ENVIRONMENT_ID!))throw new Error("INVALID_CERVEL_ENVIRONMENT_ID");
   const insecure=["change-me-now","replace-with-secret-key-material","replace-with-internal-scheduler-secret"];
   for(const name of required){if(insecure.includes(process.env[name]??""))throw new Error(`INSECURE_PRODUCTION_SECRET:${name}`);}
+  if(insecure.includes(process.env.DB_PASS??""))throw new Error("INSECURE_PRODUCTION_SECRET:DB_PASS");
 }
 
 export async function readiness(){

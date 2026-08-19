@@ -28,7 +28,7 @@ if ! gcloud iam service-accounts describe "$RUNTIME_SA" --project "$GCP_PROJECT_
 fi
 for role in roles/cloudsql.client roles/secretmanager.secretAccessor; do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" --member="serviceAccount:${RUNTIME_SA}" --role="$role" --condition=None --quiet >/dev/null
- done
+done
 
 if ! gcloud storage buckets describe "gs://${BUCKET}" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
   gcloud storage buckets create "gs://${BUCKET}" --project "$GCP_PROJECT_ID" --location "$GCP_REGION" --uniform-bucket-level-access --public-access-prevention >/dev/null
@@ -36,7 +36,7 @@ fi
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role=roles/storage.objectAdmin --quiet >/dev/null
 
 if ! gcloud sql instances describe "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-  gcloud sql instances create "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --database-version=POSTGRES_16 --tier="$SQL_TIER" --region="$GCP_REGION" --storage-type=SSD --storage-size=20 --storage-auto-increase --availability-type=zonal --no-assign-ip=false --backup-start-time=05:00 --enable-point-in-time-recovery >/dev/null
+  gcloud sql instances create "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --database-version=POSTGRES_16 --tier="$SQL_TIER" --region="$GCP_REGION" --storage-type=SSD --storage-size=20 --storage-auto-increase --availability-type=zonal --backup-start-time=05:00 --enable-point-in-time-recovery >/dev/null
 fi
 if ! gcloud sql databases describe "$DB_NAME" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
   gcloud sql databases create "$DB_NAME" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null

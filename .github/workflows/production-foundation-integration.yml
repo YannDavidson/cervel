@@ -24,6 +24,8 @@ jobs:
       CERVEL_AUTOMATION_KEY: production-ci-automation-key
       CERVEL_NODE_AUTHORITY: ci
       CERVEL_RUNTIME_MODE: production
+      CERVEL_ENVIRONMENT_ID: ci-production
+      CERVEL_PUBLIC_BASE_URL: https://cervel-ci.invalid
       CERVEL_ALLOW_ALPHA_LOGIN: 'false'
       CERVEL_TRUST_PRINCIPAL_HEADER: 'false'
     steps:
@@ -34,8 +36,13 @@ jobs:
       - run: npm run build
       - run: npm test -- --runInBand
       - run: npm run db:migrate
+      - name: Validate migration serialization
+        run: grep -q 'pg_advisory_lock' scripts/db/migrate.ts
       - name: Build production image
         run: docker build -t cervel-production:${{ github.sha }} .
+      - name: Validate production image assets
+        run: |
+          docker run --rm --entrypoint sh cervel-production:${{ github.sha }} -c 'test -f dist/scripts/db/migrate.js && test -f dist/scripts/ckep-drain.js && test -d db/migrations'
       - name: Validate managed-runtime fail closed
         run: |
           set +e
@@ -47,14 +54,17 @@ jobs:
           PORT=8787 npm run start:api >/tmp/cervel-production.log 2>&1 &
           echo $! >/tmp/cervel.pid
           for i in {1..30}; do curl -fsS http://127.0.0.1:8787/ready && break; sleep 1; done
-      - name: Validate liveness and readiness
+      - name: Validate liveness, readiness and header boundary
         run: |
           curl -fsS http://127.0.0.1:8787/live | grep -q '"ok":true'
           curl -fsS http://127.0.0.1:8787/ready | grep -q '"database":true'
+          test "$(curl -s -o /tmp/header.json -w '%{http_code}' -H 'X-CERVEL-PRINCIPAL-ID: 00000000-0000-7000-8000-000000000000' http://127.0.0.1:8787/health)" = "401"
+          grep -q PRINCIPAL_HEADER_FORBIDDEN_IN_MANAGED_RUNTIME /tmp/header.json
       - name: Validate production contracts
         run: |
           grep -q 'USER cervel' Dockerfile
-          grep -q 'CERVEL_TRUST_PRINCIPAL_HEADER' apps/api/src/production.ts
+          grep -q 'COPY --from=build --chown=cervel:cervel /app/db ./db' Dockerfile
+          grep -q 'CERVEL_ENVIRONMENT_ID' apps/api/src/production.ts
           grep -q 'job:ckep-drain' package.json
           grep -q 'job:source-sync' package.json
           grep -q 'job:migrate' package.json

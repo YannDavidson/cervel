@@ -1,0 +1,99 @@
+name: Deploy CERVEL Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      provision:
+        description: Ensure staging infrastructure exists before deploying
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+environments:
+  staging: {}
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate GitHub staging variables
+        run: |
+          test -n "$GCP_PROJECT_ID" || { echo 'Missing repository/environment variable GCP_PROJECT_ID'; exit 1; }
+          test -n "$GCP_WORKLOAD_IDENTITY_PROVIDER" || { echo 'Missing GCP_WORKLOAD_IDENTITY_PROVIDER'; exit 1; }
+          test -n "$GCP_DEPLOYER_SERVICE_ACCOUNT" || { echo 'Missing GCP_DEPLOYER_SERVICE_ACCOUNT'; exit 1; }
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Provision staging infrastructure
+        if: ${{ inputs.provision }}
+        run: bash infra/gcp/staging/provision.sh | tee /tmp/cervel-staging-infra.env
+
+      - name: Resolve staging infrastructure
+        run: |
+          if [ ! -f /tmp/cervel-staging-infra.env ]; then bash infra/gcp/staging/provision.sh > /tmp/cervel-staging-infra.env; fi
+          cat /tmp/cervel-staging-infra.env >> "$GITHUB_ENV"
+
+      - name: Build and push immutable image
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CERVEL_STAGING_ARTIFACT_REPO}/cervel:${GITHUB_SHA}"
+          docker build --pull -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Deploy database, service and jobs
+        run: bash infra/gcp/staging/deploy.sh | tee /tmp/cervel-staging-deploy.env
+
+      - name: Resolve deployment outputs
+        run: |
+          cat /tmp/cervel-staging-deploy.env >> "$GITHUB_ENV"
+          grep '^CERVEL_STAGING_URL=' /tmp/cervel-staging-deploy.env
+
+      - name: Live smoke validation
+        run: |
+          curl --fail --silent --show-error "$CERVEL_STAGING_URL/live" | tee /tmp/live.json
+          curl --fail --silent --show-error "$CERVEL_STAGING_URL/ready" | tee /tmp/ready.json
+          jq -e '.ok == true' /tmp/live.json >/dev/null
+          jq -e '.ok == true and .database == true and .mode == "staging"' /tmp/ready.json >/dev/null
+
+      - name: Run recovery jobs once
+        run: |
+          gcloud run jobs execute cervel-staging-source-sync --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --wait --quiet
+          gcloud run jobs execute cervel-staging-ckep-drain --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --wait --quiet
+
+      - name: Publish staging summary
+        run: |
+          {
+            echo '## CERVEL Staging'
+            echo "- URL: $CERVEL_STAGING_URL"
+            echo "- Image: $IMAGE_URI"
+            echo "- Node: $CERVEL_NODE_ID"
+            echo "- Workspace: $CERVEL_WORKSPACE_ID"
+            echo "- Google OIDC callback: $GOOGLE_OIDC_CALLBACK"
+            echo "- Google Drive callback: $GOOGLE_DRIVE_CALLBACK"
+            echo "- Dropbox callback: $DROPBOX_CALLBACK"
+            echo "- OneDrive callback: $ONEDRIVE_CALLBACK"
+          } >> "$GITHUB_STEP_SUMMARY"

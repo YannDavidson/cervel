@@ -1,15 +1,21 @@
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Client } from "pg";
+import { Client, type ClientConfig } from "pg";
 
 function stripMigrationTransaction(sql: string): string {
   return sql.replace(/^\s*BEGIN;\s*/i, "").replace(/\s*COMMIT;\s*$/i, "").trim();
 }
 
+function databaseConfig(): ClientConfig {
+  const connectionString=process.env.DATABASE_URL?.trim();
+  if(connectionString)return {connectionString};
+  const user=process.env.DB_USER?.trim(),password=process.env.DB_PASS,database=process.env.DB_NAME?.trim(),host=process.env.INSTANCE_UNIX_SOCKET?.trim()||process.env.DB_HOST?.trim();
+  if(!user||!password||!database||!host)throw new Error("DATABASE_URL or DB_USER, DB_PASS, DB_NAME and INSTANCE_UNIX_SOCKET/DB_HOST are required");
+  return {user,password,database,host,port:Number(process.env.DB_PORT??5432)};
+}
+
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is required");
-  const client = new Client({ connectionString });
+  const client = new Client(databaseConfig());
   await client.connect();
   try {
     await client.query(`SELECT pg_advisory_lock(hashtextextended('cervel-schema-migrations',0))`);

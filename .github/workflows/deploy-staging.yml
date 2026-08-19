@@ -37,31 +37,23 @@ jobs:
         run: |
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           payload="$(jq -nc --arg target_url "$target_url" '{state:"pending",context:"cervel/staging-deploy",description:"CERVEL staging deployment running",target_url:$target_url}')"
-          curl --fail --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "$payload" >/dev/null
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" -d "$payload" >/dev/null
 
       - name: Validate GitHub staging variables
         run: |
           echo 'DEPLOY_PHASE=variables' >> "$GITHUB_ENV"
-          test -n "$GCP_PROJECT_ID" || { echo 'Missing repository/environment variable GCP_PROJECT_ID'; exit 1; }
-          test -n "$GCP_WORKLOAD_IDENTITY_PROVIDER" || { echo 'Missing GCP_WORKLOAD_IDENTITY_PROVIDER'; exit 1; }
-          test -n "$GCP_DEPLOYER_SERVICE_ACCOUNT" || { echo 'Missing GCP_DEPLOYER_SERVICE_ACCOUNT'; exit 1; }
+          test -n "$GCP_PROJECT_ID"
+          test -n "$GCP_WORKLOAD_IDENTITY_PROVIDER"
+          test -n "$GCP_DEPLOYER_SERVICE_ACCOUNT"
 
       - name: Mark authentication phase
         run: echo 'DEPLOY_PHASE=wif-auth' >> "$GITHUB_ENV"
-
       - id: auth
         uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-
       - uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
@@ -69,41 +61,30 @@ jobs:
       - name: Provision staging infrastructure
         if: ${{ github.event_name == 'push' || inputs.provision }}
         run: |
+          set -o pipefail
           echo 'DEPLOY_PHASE=provision' >> "$GITHUB_ENV"
           bash infra/gcp/staging/provision.sh | tee /tmp/cervel-staging-infra.env
 
       - name: Resolve staging infrastructure
         run: |
           echo 'DEPLOY_PHASE=resolve-infra' >> "$GITHUB_ENV"
-          if [ ! -f /tmp/cervel-staging-infra.env ]; then bash infra/gcp/staging/provision.sh > /tmp/cervel-staging-infra.env; fi
-          cat /tmp/cervel-staging-infra.env >> "$GITHUB_ENV"
+          if [ ! -s /tmp/cervel-staging-infra.env ]; then bash infra/gcp/staging/provision.sh > /tmp/cervel-staging-infra.env; fi
+          allowed='^(GCP_PROJECT_ID|GCP_REGION|CLOUD_SQL_INSTANCE|CLOUD_SQL_CONNECTION_NAME|CERVEL_STAGING_BUCKET|CERVEL_STAGING_RUNTIME_SA|CERVEL_STAGING_ARTIFACT_REPO)='
+          grep -E "$allowed" /tmp/cervel-staging-infra.env > /tmp/cervel-staging-infra.clean
+          test "$(wc -l < /tmp/cervel-staging-infra.clean)" -eq 7
+          cat /tmp/cervel-staging-infra.clean >> "$GITHUB_ENV"
 
       - name: Build and push immutable image
         run: |
+          test -n "$CERVEL_STAGING_ARTIFACT_REPO"
           REGISTRY="${GCP_REGION}-docker.pkg.dev"
           echo 'DEPLOY_PHASE=image-auth' >> "$GITHUB_ENV"
           gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin "https://${REGISTRY}"
           IMAGE_URI="${REGISTRY}/${GCP_PROJECT_ID}/${CERVEL_STAGING_ARTIFACT_REPO}/cervel:${GITHUB_SHA}"
           echo 'DEPLOY_PHASE=image-build' >> "$GITHUB_ENV"
-          if ! docker build -t "$IMAGE_URI" . 2>&1 | tee /tmp/cervel-docker-build.log; then
-            phase=image-build-other
-            if grep -Eqi 'toomanyrequests|429|rate limit|failed to resolve source metadata|failed to fetch anonymous token|pull access denied' /tmp/cervel-docker-build.log; then phase=image-build-base; fi
-            if grep -Eqi 'npm ERR!|npm error|npm ci' /tmp/cervel-docker-build.log; then phase=image-build-npm; fi
-            if grep -Eqi 'error TS[0-9]+' /tmp/cervel-docker-build.log; then phase=image-build-typescript; fi
-            if grep -Eqi 'COPY failed|failed to compute cache key|not found' /tmp/cervel-docker-build.log; then phase=image-build-context; fi
-            if grep -Eqi 'no space left on device' /tmp/cervel-docker-build.log; then phase=image-build-disk; fi
-            echo "DEPLOY_PHASE=${phase}" >> "$GITHUB_ENV"
-            exit 1
-          fi
+          docker build -t "$IMAGE_URI" .
           echo 'DEPLOY_PHASE=image-push' >> "$GITHUB_ENV"
-          if ! docker push "$IMAGE_URI" 2>&1 | tee /tmp/cervel-docker-push.log; then
-            phase=image-push-other
-            if grep -Eqi 'denied|unauthorized|permission|403' /tmp/cervel-docker-push.log; then phase=image-push-permission; fi
-            if grep -Eqi 'repository.*not found|name unknown|404' /tmp/cervel-docker-push.log; then phase=image-push-repository; fi
-            if grep -Eqi 'timeout|connection reset|network|5[0-9][0-9]' /tmp/cervel-docker-push.log; then phase=image-push-network; fi
-            echo "DEPLOY_PHASE=${phase}" >> "$GITHUB_ENV"
-            exit 1
-          fi
+          docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Deploy database, service and jobs
@@ -114,16 +95,11 @@ jobs:
 
       - name: Resolve deployment outputs
         run: |
-          echo 'DEPLOY_PHASE=resolve-deploy-file' >> "$GITHUB_ENV"
-          test -s /tmp/cervel-staging-deploy.env
+          echo 'DEPLOY_PHASE=resolve-deploy' >> "$GITHUB_ENV"
           allowed='^(CERVEL_STAGING_URL|CERVEL_NODE_ID|CERVEL_WORKSPACE_ID|GOOGLE_OIDC_CALLBACK|GOOGLE_DRIVE_CALLBACK|DROPBOX_CALLBACK|ONEDRIVE_CALLBACK)='
-          echo 'DEPLOY_PHASE=resolve-deploy-filter' >> "$GITHUB_ENV"
           grep -E "$allowed" /tmp/cervel-staging-deploy.env > /tmp/cervel-staging-env.clean
-          echo 'DEPLOY_PHASE=resolve-deploy-count' >> "$GITHUB_ENV"
           test "$(wc -l < /tmp/cervel-staging-env.clean)" -eq 7
-          echo 'DEPLOY_PHASE=resolve-deploy-import' >> "$GITHUB_ENV"
           cat /tmp/cervel-staging-env.clean >> "$GITHUB_ENV"
-          echo 'DEPLOY_PHASE=resolve-deploy-url' >> "$GITHUB_ENV"
           grep -q '^CERVEL_STAGING_URL=https://' /tmp/cervel-staging-env.clean
 
       - name: Live smoke validation
@@ -162,20 +138,6 @@ jobs:
           DEPLOY_STATE: ${{ job.status }}
         run: |
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          if [ "$DEPLOY_STATE" = success ]; then
-            state=success
-            context='cervel/staging-deploy'
-            description='CERVEL staging deployment succeeded'
-          else
-            state=failure
-            context="cervel/staging-failure/${DEPLOY_PHASE}"
-            description="CERVEL staging failed during ${DEPLOY_PHASE}"
-          fi
+          if [ "$DEPLOY_STATE" = success ]; then state=success; context='cervel/staging-deploy'; description='CERVEL staging deployment succeeded'; else state=failure; context="cervel/staging-failure/${DEPLOY_PHASE}"; description="CERVEL staging failed during ${DEPLOY_PHASE}"; fi
           payload="$(jq -nc --arg state "$state" --arg context "$context" --arg description "$description" --arg target_url "$target_url" '{state:$state,context:$context,description:$description,target_url:$target_url}')"
-          curl --fail --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "$payload" >/dev/null
+          curl --fail --silent --show-error -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" -d "$payload" >/dev/null

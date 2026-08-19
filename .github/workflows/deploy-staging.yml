@@ -106,6 +106,7 @@ jobs:
 
       - name: Deploy database, service and jobs
         run: |
+          set -o pipefail
           echo 'DEPLOY_PHASE=deploy-runtime' >> "$GITHUB_ENV"
           bash infra/gcp/staging/deploy.sh | tee /tmp/cervel-staging-deploy.env
 

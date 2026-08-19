@@ -38,7 +38,7 @@ fi
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role=roles/storage.objectAdmin --quiet >/dev/null
 
 if ! gcloud sql instances describe "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-  gcloud sql instances create "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --database-version=POSTGRES_16 --tier="$SQL_TIER" --region="$GCP_REGION" --storage-type=SSD --storage-size=20 --storage-auto-increase --availability-type=zonal --backup-start-time=05:00 --enable-point-in-time-recovery >/dev/null
+  gcloud sql instances create "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --database-version=POSTGRES_16 --edition=ENTERPRISE --tier="$SQL_TIER" --region="$GCP_REGION" --assign-ip --storage-type=SSD --storage-size=20 --storage-auto-increase --availability-type=zonal --backup-start-time=05:00 --enable-point-in-time-recovery >/dev/null
 fi
 if ! gcloud sql databases describe "$DB_NAME" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
   gcloud sql databases create "$DB_NAME" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" >/dev/null

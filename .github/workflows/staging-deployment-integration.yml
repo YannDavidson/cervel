@@ -1,0 +1,65 @@
+name: CERVEL Staging Deployment Integration
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  staging-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: cervel
+      S3_ACCESS_KEY_ID: cervel
+      S3_SECRET_ACCESS_KEY: change-me-now
+      CERVEL_NODE_AUTHORITY: local
+      CERVEL_NODE_NAME: CERVEL CI Node
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: ci-admin
+      CERVEL_ALLOW_ALPHA_LOGIN: 'true'
+      CERVEL_CONNECTOR_TOKEN_KEY: ci-only-connector-key
+      CERVEL_AUTOMATION_KEY: ci-automation-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap | jq -e '.event == "cervel_bootstrap" and .nodeId != null and .workspaceId != null' >/dev/null
+      - name: Validate deployment scripts
+        run: |
+          bash -n infra/gcp/staging/provision.sh
+          bash -n infra/gcp/staging/deploy.sh
+          bash -n infra/gcp/staging/bootstrap-github-wif.sh
+      - name: Validate managed socket configuration contract
+        run: |
+          env -u DATABASE_URL \
+            CERVEL_RUNTIME_MODE=staging \
+            CERVEL_ENVIRONMENT_ID=staging-ci \
+            CERVEL_PUBLIC_BASE_URL=https://staging.invalid \
+            DB_USER=cervel DB_PASS=ci-db-secret DB_NAME=cervel INSTANCE_UNIX_SOCKET=/tmp/cloudsql/test \
+            S3_ENDPOINT=https://storage.googleapis.com S3_REGION=us-central1 S3_BUCKET=ci-bucket \
+            S3_ACCESS_KEY_ID=ci-access S3_SECRET_ACCESS_KEY=ci-secret \
+            CERVEL_CONNECTOR_TOKEN_KEY=ci-connector CERVEL_AUTOMATION_KEY=ci-automation CERVEL_NODE_AUTHORITY=staging \
+            npx tsx -e 'import {assertProductionConfiguration} from "./apps/api/src/production"; assertProductionConfiguration()'
+      - name: Validate staging deployment contracts
+        run: |
+          grep -q 'google-github-actions/auth@v3' .github/workflows/deploy-staging.yml
+          grep -q 'google-github-actions/setup-gcloud@v3' .github/workflows/deploy-staging.yml
+          grep -q 'workload_identity_provider' .github/workflows/deploy-staging.yml
+          grep -q 'gcloud run jobs deploy cervel-staging-migrate' infra/gcp/staging/deploy.sh
+          grep -q 'gcloud run jobs deploy cervel-staging-source-sync' infra/gcp/staging/deploy.sh
+          grep -q 'gcloud run jobs deploy cervel-staging-ckep-drain' infra/gcp/staging/deploy.sh
+          grep -q 'https://storage.googleapis.com' infra/gcp/staging/deploy.sh
+          grep -q 'CERVEL_STORAGE_MANAGED=true' infra/gcp/staging/deploy.sh
+          grep -q 'gha-creds-\*.json' .dockerignore

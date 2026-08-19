@@ -8,8 +8,16 @@ SQL_INSTANCE="${CERVEL_STAGING_SQL_INSTANCE:-cervel-staging-pg}"
 DB_NAME="${CERVEL_STAGING_DB_NAME:-cervel}"
 DB_USER="${CERVEL_STAGING_DB_USER:-cervel}"
 BUCKET="${CERVEL_STAGING_BUCKET:-${GCP_PROJECT_ID}-cervel-staging}"
-RUNTIME_SA_NAME="${CERVEL_STAGING_RUNTIME_SA:-cervel-staging-runtime}"
-RUNTIME_SA="${RUNTIME_SA_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+RUNTIME_SA_INPUT="${CERVEL_STAGING_RUNTIME_SA:-cervel-staging-runtime}"
+if [[ "$RUNTIME_SA_INPUT" == *@* ]]; then
+  RUNTIME_SA="$RUNTIME_SA_INPUT"
+else
+  RUNTIME_SA="${RUNTIME_SA_INPUT}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+fi
+if [[ ! "$RUNTIME_SA" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com$ ]]; then
+  echo "Invalid CERVEL_STAGING_RUNTIME_SA: expected a service-account ID or full email" >&2
+  exit 2
+fi
 SERVICE="${CERVEL_STAGING_SERVICE:-cervel-staging}"
 CONNECTION_NAME="$(gcloud sql instances describe "$SQL_INSTANCE" --project "$GCP_PROJECT_ID" --format='value(connectionName)')"
 SOCKET="/cloudsql/${CONNECTION_NAME}"

@@ -1,9 +1,14 @@
-import { Pool, PoolClient } from "pg";
+import { Pool, PoolClient, type PoolConfig } from "pg";
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error("DATABASE_URL is required");
+function databaseConfig(): PoolConfig {
+  const connectionString=process.env.DATABASE_URL?.trim();
+  if(connectionString)return {connectionString};
+  const user=process.env.DB_USER?.trim(),password=process.env.DB_PASS,database=process.env.DB_NAME?.trim(),host=process.env.INSTANCE_UNIX_SOCKET?.trim()||process.env.DB_HOST?.trim();
+  if(!user||!password||!database||!host)throw new Error("DATABASE_URL or DB_USER, DB_PASS, DB_NAME and INSTANCE_UNIX_SOCKET/DB_HOST are required");
+  return {user,password,database,host,port:Number(process.env.DB_PORT??5432),max:Number(process.env.DB_POOL_MAX??10),idleTimeoutMillis:30000,connectionTimeoutMillis:10000};
+}
 
-export const db = new Pool({ connectionString });
+export const db = new Pool(databaseConfig());
 
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();

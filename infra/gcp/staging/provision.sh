@@ -17,7 +17,7 @@ ensure_secret(){ local name="$1" value="$2"; if ! secret_exists "$name"; then pr
 random_secret(){ openssl rand -base64 48 | tr -d '\n'; }
 
 gcloud config set project "$GCP_PROJECT_ID" >/dev/null
-gcloud services enable run.googleapis.com sqladmin.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com iamcredentials.googleapis.com cloudresourcemanager.googleapis.com --project "$GCP_PROJECT_ID" >/dev/null
+gcloud services enable run.googleapis.com sqladmin.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com storage.googleapis.com iam.googleapis.com iamcredentials.googleapis.com cloudresourcemanager.googleapis.com logging.googleapis.com --project "$GCP_PROJECT_ID" >/dev/null
 
 if ! gcloud artifacts repositories describe "$ARTIFACT_REPO" --location "$GCP_REGION" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
   gcloud artifacts repositories create "$ARTIFACT_REPO" --repository-format=docker --location "$GCP_REGION" --project "$GCP_PROJECT_ID" --description="CERVEL staging images" >/dev/null

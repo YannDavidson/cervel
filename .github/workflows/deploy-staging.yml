@@ -82,7 +82,16 @@ jobs:
           gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
           IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CERVEL_STAGING_ARTIFACT_REPO}/cervel:${GITHUB_SHA}"
           echo 'DEPLOY_PHASE=image-build' >> "$GITHUB_ENV"
-          docker build -t "$IMAGE_URI" .
+          if ! docker build -t "$IMAGE_URI" . 2>&1 | tee /tmp/cervel-docker-build.log; then
+            phase=image-build-other
+            if grep -Eqi 'toomanyrequests|429|rate limit|failed to resolve source metadata|failed to fetch anonymous token|pull access denied' /tmp/cervel-docker-build.log; then phase=image-build-base; fi
+            if grep -Eqi 'npm ERR!|npm error|npm ci' /tmp/cervel-docker-build.log; then phase=image-build-npm; fi
+            if grep -Eqi 'error TS[0-9]+' /tmp/cervel-docker-build.log; then phase=image-build-typescript; fi
+            if grep -Eqi 'COPY failed|failed to compute cache key|not found' /tmp/cervel-docker-build.log; then phase=image-build-context; fi
+            if grep -Eqi 'no space left on device' /tmp/cervel-docker-build.log; then phase=image-build-disk; fi
+            echo "DEPLOY_PHASE=${phase}" >> "$GITHUB_ENV"
+            exit 1
+          fi
           echo 'DEPLOY_PHASE=image-push' >> "$GITHUB_ENV"
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"

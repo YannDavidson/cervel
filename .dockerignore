@@ -6,3 +6,4 @@ dist
 .env.*
 coverage
 *.log
+gha-creds-*.json

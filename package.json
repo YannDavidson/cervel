@@ -10,6 +10,7 @@
     "db:migrate": "tsx scripts/db/migrate.ts",
     "db:bootstrap": "tsx scripts/db/bootstrap.ts",
     "job:migrate": "node dist/scripts/db/migrate.js",
+    "job:bootstrap": "node dist/scripts/db/bootstrap.js",
     "job:source-sync": "node dist/workers/source-sync.js",
     "job:ckep-drain": "node dist/scripts/ckep-drain.js",
     "smoke:production": "tsx scripts/production-smoke.ts",

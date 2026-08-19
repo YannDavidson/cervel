@@ -78,9 +78,10 @@ jobs:
 
       - name: Build and push immutable image
         run: |
+          REGISTRY="${GCP_REGION}-docker.pkg.dev"
           echo 'DEPLOY_PHASE=image-auth' >> "$GITHUB_ENV"
-          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${CERVEL_STAGING_ARTIFACT_REPO}/cervel:${GITHUB_SHA}"
+          gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin "https://${REGISTRY}"
+          IMAGE_URI="${REGISTRY}/${GCP_PROJECT_ID}/${CERVEL_STAGING_ARTIFACT_REPO}/cervel:${GITHUB_SHA}"
           echo 'DEPLOY_PHASE=image-build' >> "$GITHUB_ENV"
           if ! docker build -t "$IMAGE_URI" . 2>&1 | tee /tmp/cervel-docker-build.log; then
             phase=image-build-other
@@ -93,7 +94,14 @@ jobs:
             exit 1
           fi
           echo 'DEPLOY_PHASE=image-push' >> "$GITHUB_ENV"
-          docker push "$IMAGE_URI"
+          if ! docker push "$IMAGE_URI" 2>&1 | tee /tmp/cervel-docker-push.log; then
+            phase=image-push-other
+            if grep -Eqi 'denied|unauthorized|permission|403' /tmp/cervel-docker-push.log; then phase=image-push-permission; fi
+            if grep -Eqi 'repository.*not found|name unknown|404' /tmp/cervel-docker-push.log; then phase=image-push-repository; fi
+            if grep -Eqi 'timeout|connection reset|network|5[0-9][0-9]' /tmp/cervel-docker-push.log; then phase=image-push-network; fi
+            echo "DEPLOY_PHASE=${phase}" >> "$GITHUB_ENV"
+            exit 1
+          fi
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Deploy database, service and jobs

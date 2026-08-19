@@ -1,8 +1,8 @@
 import { db, withTransaction } from "../apps/api/src/db";
 import { dispatchCkepJournalEvent } from "../apps/api/src/ckep-reactive";
 
-const limit=Math.min(Math.max(Number(process.env.CERVEL_CKEP_DRAIN_LIMIT??50),1),500);
-try{
+async function main(){
+  const limit=Math.min(Math.max(Number(process.env.CERVEL_CKEP_DRAIN_LIMIT??50),1),500);
   const pending=await db.query(`SELECT j.id,j.node_id,j.workspace_id FROM ckep_event_journal j LEFT JOIN ckep_reactive_dispatches d ON d.journal_event_id=j.id WHERE d.id IS NULL OR d.status='failed' ORDER BY j.created_at,j.sequence LIMIT $1`,[limit]);
   let succeeded=0,failed=0;
   for(const row of pending.rows){
@@ -11,4 +11,6 @@ try{
   }
   console.log(JSON.stringify({ok:failed===0,processed:pending.rowCount,succeeded,failed}));
   if(failed)process.exitCode=1;
-}finally{await db.end();}
+}
+
+main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>db.end());

@@ -22,13 +22,21 @@ CORE_SECRETS="DB_PASS=cervel-staging-db-password:latest,S3_ACCESS_KEY_ID=cervel-
 mark_phase migration-job-deploy
 if ! gcloud run jobs deploy cervel-staging-migrate --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --image "$IMAGE_URI" --service-account "$RUNTIME_SA" --set-cloudsql-instances "$CONNECTION_NAME" --command node --args dist/scripts/db/migrate.js --set-env-vars "DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET}" --set-secrets "DB_PASS=cervel-staging-db-password:latest" --tasks 1 --max-retries 0 --task-timeout 20m --quiet 2>&1 | tee /tmp/cervel-migration-job-deploy.log; then
   phase=migration-job-deploy-other
-  if grep -Eqi 'iam.serviceAccounts.actAs|actAs|service account user' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-actas; fi
-  if grep -Eqi 'secretmanager|secret.*access|secret.*permission|Secret Manager' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-secret; fi
-  if grep -Eqi 'cloudsql|Cloud SQL|sqladmin' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-cloudsql; fi
-  if grep -Eqi 'artifactregistry|container image|image.*not found|image.*permission' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-image; fi
-  if grep -Eqi 'service agent' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-service-agent; fi
-  if grep -Eqi 'INVALID_ARGUMENT|unrecognized arguments|invalid value|invalid argument' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-invalid; fi
-  if grep -Eqi 'PERMISSION_DENIED|permission denied|403' /tmp/cervel-migration-job-deploy.log; then phase=migration-job-deploy-permission; fi
+  if grep -Eqi 'iam.serviceAccounts.actAs|actAs|service account user' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-actas
+  elif grep -Eqi 'secretmanager|secret.*access|secret.*permission|Secret Manager' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-secret
+  elif grep -Eqi 'cloudsql|Cloud SQL|sqladmin' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-cloudsql
+  elif grep -Eqi 'artifactregistry|container image|image.*not found|image.*permission' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-image
+  elif grep -Eqi 'service agent' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-service-agent
+  elif grep -Eqi 'PERMISSION_DENIED|permission denied|403' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-permission
+  elif grep -Eqi 'INVALID_ARGUMENT|unrecognized arguments|invalid value|invalid argument' /tmp/cervel-migration-job-deploy.log; then
+    phase=migration-job-deploy-invalid
+  fi
   mark_phase "$phase"
   exit 1
 fi

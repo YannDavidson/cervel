@@ -25,10 +25,8 @@ if ! gcloud artifacts repositories describe "$ARTIFACT_REPO" --location "$GCP_RE
   gcloud artifacts repositories create "$ARTIFACT_REPO" --repository-format=docker --location "$GCP_REGION" --project "$GCP_PROJECT_ID" --description="CERVEL staging images" >/dev/null
 fi
 if [[ -n "${GCP_DEPLOYER_SERVICE_ACCOUNT:-}" ]]; then
-  gcloud artifacts repositories add-iam-policy-binding "$ARTIFACT_REPO" \
-    --location "$GCP_REGION" --project "$GCP_PROJECT_ID" \
-    --member="serviceAccount:${GCP_DEPLOYER_SERVICE_ACCOUNT}" \
-    --role=roles/artifactregistry.writer --quiet >/dev/null
+  gcloud artifacts repositories add-iam-policy-binding "$ARTIFACT_REPO" --location "$GCP_REGION" --project "$GCP_PROJECT_ID" --member="serviceAccount:${GCP_DEPLOYER_SERVICE_ACCOUNT}" --role=roles/artifactregistry.writer --quiet >/dev/null
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" --member="serviceAccount:${GCP_DEPLOYER_SERVICE_ACCOUNT}" --role=roles/storage.hmacKeyAdmin --condition=None --quiet >/dev/null
 fi
 
 if ! gcloud iam service-accounts describe "$RUNTIME_SA" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then

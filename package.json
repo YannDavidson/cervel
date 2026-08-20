@@ -2,8 +2,10 @@
   "name": "cervel-v0.1-starter",
   "private": true,
   "version": "0.1.0",
+  "bin": { "cervel": "dist/apps/local-node/src/cli.js" },
   "scripts": {
     "dev:api": "tsx apps/api/src/server.ts",
+    "cervel": "tsx apps/local-node/src/cli.ts",
     "build": "tsc -p tsconfig.json",
     "start:api": "node dist/apps/api/src/server.js",
     "sync:sources": "tsx workers/source-sync.ts",
@@ -16,7 +18,8 @@
     "smoke:production": "tsx scripts/production-smoke.ts",
     "test": "jest",
     "test:contracts": "jest tests/contracts",
-    "test:ckuri": "jest tests/ckuri"
+    "test:ckuri": "jest tests/ckuri",
+    "test:vault": "jest tests/local-node"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

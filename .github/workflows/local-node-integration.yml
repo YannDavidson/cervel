@@ -1,0 +1,65 @@
+name: CERVEL Vault + Local Node Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['apps/local-node/**','apps/api/**','scripts/db/**','tests/local-node/**','docs/LOCAL_NODE.md','package*.json','.github/workflows/local-node-integration.yml']
+jobs:
+  local-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CERVEL_VAULT_PASSPHRASE: correct-horse-battery-staple-ci-only
+      VAULT: /tmp/cervel-local-vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm run test:vault -- --runInBand
+      - name: Create and start local Vault
+        run: |
+          npm run --silent cervel -- init --vault "$VAULT" --name 'Offline CI Vault' --authority offline-ci
+          npm run --silent cervel -- start --vault "$VAULT"
+          for i in {1..30}; do curl -fsS http://127.0.0.1:8787/ready && break; sleep 1; done
+          npm run --silent cervel -- status --vault "$VAULT" | jq -e '.running == true'
+      - name: Resolve local credentials
+        run: |
+          node - <<'NODE' >> "$GITHUB_ENV"
+          const fs=require('fs'),crypto=require('crypto'),m=JSON.parse(fs.readFileSync(process.env.VAULT+'/vault.json')),
+          p=fs.readFileSync(process.env.VAULT+'/private/secrets.cvlt'),k=crypto.scryptSync(process.env.CERVEL_VAULT_PASSPHRASE,Buffer.from(m.encryption.salt,'base64'),32,{N:32768,r:8,p:1,maxmem:67108864}),
+          d=crypto.createDecipheriv('aes-256-gcm',k,p.subarray(6,18));d.setAuthTag(p.subarray(18,34));
+          s=JSON.parse(Buffer.concat([d.update(p.subarray(34)),d.final()]));
+          console.log('LOCAL_TOKEN='+s.local_api_token)
+          NODE
+          jq -r '"NODE_ID="+.nodeId,"WORKSPACE_ID="+.workspaceId,"PRINCIPAL_ID="+.principalId,"STORAGE_ID="+.storageLocationId' "$VAULT/runtime/bootstrap.json" >> "$GITHUB_ENV"
+      - name: Validate token boundary
+        run: |
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/v1/search -H 'content-type: application/json' -d '{}')" = 401
+      - name: Exercise offline knowledge and Trace path
+        run: |
+          set -euo pipefail
+          H=(-H "x-cervel-local-token: $LOCAL_TOKEN" -H "x-cervel-principal-id: $PRINCIPAL_ID" -H 'content-type: application/json')
+          CKO=$(curl -fsS -X POST http://127.0.0.1:8787/v1/objects "${H[@]}" -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"type\":\"note\",\"title\":\"Offline sovereignty\"}")
+          CKO_ID=$(jq -r .id <<<"$CKO")
+          CONTENT=$(printf 'CERVEL keeps knowledge sovereign and available offline.\n\nEvery answer preserves a trace to its source artifact.' | base64 -w0)
+          curl -fsS -X POST "http://127.0.0.1:8787/v1/objects/$CKO_ID/artifacts" "${H[@]}" -d "{\"storage_location_id\":\"$STORAGE_ID\",\"filename\":\"offline.md\",\"mime_type\":\"text/markdown\",\"content_base64\":\"$CONTENT\"}" | jq -e '.ingestion.ingested == true'
+          curl -fsS -X POST http://127.0.0.1:8787/v1/search "${H[@]}" -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"sovereign offline knowledge\"}" | jq -e '.results | length > 0'
+          ANSWER=$(curl -fsS -X POST http://127.0.0.1:8787/v1/reason "${H[@]}" -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"How does CERVEL preserve sovereign knowledge?\"}")
+          ANSWER_ID=$(jq -r .id <<<"$ANSWER")
+          curl -fsS "http://127.0.0.1:8787/v1/answers/$ANSWER_ID/trace" -H "x-cervel-local-token: $LOCAL_TOKEN" -H "x-cervel-principal-id: $PRINCIPAL_ID" | jq -e '.chain | length > 0'
+          npm run --silent cervel -- vault verify --vault "$VAULT" | jq -e '.artifacts_verified == 1'
+      - name: Validate encrypted backup restart and persistence
+        run: |
+          npm run --silent cervel -- backup --vault "$VAULT" | tee /tmp/backup.json
+          test -s "$(jq -r .backup /tmp/backup.json)"
+          npm run --silent cervel -- lock --vault "$VAULT"
+          npm run --silent cervel -- start --vault "$VAULT"
+          for i in {1..30}; do curl -fsS http://127.0.0.1:8787/ready && break; sleep 1; done
+          H=(-H "x-cervel-local-token: $LOCAL_TOKEN" -H "x-cervel-principal-id: $PRINCIPAL_ID" -H 'content-type: application/json')
+          curl -fsS -X POST http://127.0.0.1:8787/v1/search "${H[@]}" -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"query\":\"sovereign offline knowledge\"}" | jq -e '.results | length > 0'
+      - name: Show diagnostics
+        if: failure()
+        run: |
+          cat "$VAULT/runtime/node.log" || true
+          docker ps -a || true

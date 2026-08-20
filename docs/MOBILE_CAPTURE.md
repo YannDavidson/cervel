@@ -4,7 +4,7 @@ CERVEL Mobile is a focused iOS and Android capture/retrieval companion. It is no
 
 ## Security and consent
 
-The app requires the device biometric or platform passcode before opening. Its queue key and pairing capability live in SecureStore with device-only, authentication-required access. Capture envelopes are encrypted before entering the SQLite outbox. Background delivery and manual retry decrypt one record in memory at a time.
+The app requires the device biometric or platform passcode before opening. Its queue key and pairing capability live in device-only, when-unlocked SecureStore so the operating system can run authorized background delivery without an impossible headless biometric prompt. Capture envelopes are encrypted before entering the SQLite outbox. Background delivery and manual retry decrypt one record in memory at a time.
 
 Location and capture timestamp are independent, off-by-default choices. Queue time is operational state required to manage the local outbox; it is not inserted into capture provenance. A location is rejected unless location consent is recorded, and a capture timestamp is rejected unless timestamp consent is recorded. Revocation hashes and disables the mobile capability at the Local Node immediately.
 

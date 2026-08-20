@@ -18,4 +18,7 @@ describe("CERVEL Alpha Golden Path release contract",()=>{
     for(const evidence of ["cervel -- init","cervel -- start","cervel -- backup","cervel -- restore","cervel -- export","vault verify","CERVEL_GOLDEN_RESTORED"])expect(workflow).toContain(evidence);
     for(const endpoint of ["/v1/local/captures","/v1/mobile/captures","/v1/search","/v1/reason","/trace","/v1/local/mobile/devices/"])expect(runner).toContain(endpoint);
   });
+  test("Local Node startup retries first-boot database initialization",()=>{
+    const cli=readFileSync("apps/local-node/src/cli.ts","utf8");expect(cli).toContain("attempt<=5");expect(cli).toContain("Local database initialization failed");
+  });
 });

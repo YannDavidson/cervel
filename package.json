@@ -3,11 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "description": "Sovereign knowledge infrastructure",
-  "author": {"name": "CSIX AI LABS LLC", "email": "30988886+YannDavidson@users.noreply.github.com"},
+  "author": {
+    "name": "CSIX AI LABS LLC",
+    "email": "30988886+YannDavidson@users.noreply.github.com"
+  },
   "main": "dist/apps/desktop/src/main.js",
   "productName": "CERVEL",
   "desktopName": "ai.cervel.desktop",
-  "bin": { "cervel": "dist/apps/local-node/src/cli.js" },
+  "bin": {
+    "cervel": "dist/apps/local-node/src/cli.js"
+  },
   "scripts": {
     "dev:api": "tsx apps/api/src/server.ts",
     "cervel": "tsx apps/local-node/src/cli.ts",
@@ -32,8 +37,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@simplewebauthn/server": "^13.1.0",
-    "fastify": "^5.0.0",
     "electron-updater": "^6.6.2",
+    "fastify": "^5.0.0",
     "jose": "^6.0.0",
     "pg": "^8.0.0"
   },
@@ -41,7 +46,7 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
-    "electron": "^37.2.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.0.12",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
@@ -50,14 +55,59 @@
   },
   "build": {
     "appId": "ai.cervel.desktop",
-    "directories": {"output": "release/desktop"},
+    "directories": {
+      "output": "release/desktop"
+    },
     "artifactName": "CERVEL-${version}-${os}-${arch}.${ext}",
-    "files": ["dist/**/*", "apps/desktop/renderer/**/*", "package.json", "node_modules/**/*"],
-    "asarUnpack": ["dist/apps/local-node/**/*", "dist/apps/api/**/*", "dist/scripts/**/*"],
-    "mac": {"category": "public.app-category.productivity", "target": ["dmg", "zip"], "hardenedRuntime": true, "gatekeeperAssess": false, "entitlements": "apps/desktop/build/entitlements.mac.plist", "entitlementsInherit": "apps/desktop/build/entitlements.mac.plist"},
-    "win": {"target": ["nsis"]},
-    "linux": {"target": ["AppImage", "deb"], "category": "Office", "maintainer": "CSIX AI LABS LLC <30988886+YannDavidson@users.noreply.github.com>", "syncDesktopName": true, "executableName": "cervel", "synopsis": "Sovereign knowledge desktop", "description": "A secure desktop client for the CERVEL Local Node."},
-    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true},
-    "publish": {"provider": "github", "owner": "YannDavidson", "repo": "cervel", "releaseType": "draft"}
+    "files": [
+      "dist/**/*",
+      "apps/desktop/renderer/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "dist/apps/local-node/**/*",
+      "dist/apps/api/**/*",
+      "dist/scripts/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "apps/desktop/build/entitlements.mac.plist",
+      "entitlementsInherit": "apps/desktop/build/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "CSIX AI LABS LLC <30988886+YannDavidson@users.noreply.github.com>",
+      "syncDesktopName": true,
+      "executableName": "cervel",
+      "synopsis": "Sovereign knowledge desktop",
+      "description": "A secure desktop client for the CERVEL Local Node."
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "YannDavidson",
+      "repo": "cervel",
+      "releaseType": "draft"
+    }
   }
 }

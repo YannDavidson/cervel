@@ -31,14 +31,13 @@ jobs:
           npm run --silent cervel -- start --vault "$GOLDEN_VAULT"
           for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8787/ready && break; sleep 1; done
           curl --fail --silent http://127.0.0.1:8787/ready
-          BOOTSTRAP=$(cat "$GOLDEN_VAULT/runtime/bootstrap.json")
-          SECRETS=$(CERVEL_VAULT_PASSPHRASE="$CERVEL_VAULT_PASSPHRASE" node -e "require('./dist/apps/local-node/src/vault.js').unlockVault(process.env.GOLDEN_VAULT,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))")
+          CERVEL_VAULT_PASSPHRASE="$CERVEL_VAULT_PASSPHRASE" node -e "require('./dist/apps/local-node/src/vault.js').unlockVault(process.env.GOLDEN_VAULT,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))" > /tmp/golden-secrets.json
           {
-            echo "CERVEL_LOCAL_API_TOKEN=$(jq -r .local_api_token <<<\"$SECRETS\")"
-            echo "CERVEL_GOLDEN_NODE_ID=$(jq -r .nodeId <<<\"$BOOTSTRAP\")"
-            echo "CERVEL_GOLDEN_WORKSPACE_ID=$(jq -r .workspaceId <<<\"$BOOTSTRAP\")"
-            echo "CERVEL_GOLDEN_PRINCIPAL_ID=$(jq -r .principalId <<<\"$BOOTSTRAP\")"
-            echo "CERVEL_GOLDEN_STORAGE_ID=$(jq -r .storageLocationId <<<\"$BOOTSTRAP\")"
+            echo "CERVEL_LOCAL_API_TOKEN=$(jq -r .local_api_token /tmp/golden-secrets.json)"
+            echo "CERVEL_GOLDEN_NODE_ID=$(jq -r .nodeId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_WORKSPACE_ID=$(jq -r .workspaceId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_PRINCIPAL_ID=$(jq -r .principalId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_STORAGE_ID=$(jq -r .storageLocationId "$GOLDEN_VAULT/runtime/bootstrap.json")"
           } >> "$GITHUB_ENV"
       - name: Ingest, retrieve, answer, trace, sync and revoke
         run: npm run --silent alpha:golden-path -- run

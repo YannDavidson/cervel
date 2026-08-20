@@ -18,6 +18,7 @@ import { registerConnectorRoutes } from "./connector-routes";
 import { registerEvolutionRoutes } from "./evolution-routes";
 import { registerAgentRoutes } from "./agent-routes";
 import { assertProductionConfiguration, registerProductionLifecycle } from "./production";
+import { registerLocalNodeRoutes } from "./local-node-routes";
 
 assertProductionConfiguration();
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
@@ -32,6 +33,7 @@ registerWorkspaceRoutes(app);
 registerConnectorRoutes(app);
 registerEvolutionRoutes(app);
 registerAgentRoutes(app);
+if(process.env.CERVEL_RUNTIME_MODE==="local")registerLocalNodeRoutes(app);
 
 function requiredHeaderPrincipal(request: { headers: Record<string, unknown> }): string { const raw=request.headers["x-cervel-principal-id"]; if(typeof raw!=="string"||!raw){const error=new Error("X-CERVEL-PRINCIPAL-ID is required");(error as Error&{statusCode?:number}).statusCode=401;throw error;} return raw; }
 app.get("/health", async () => ({ ok:true, service:"cervel-node-alpha", cortex:"knowledge-evolution-v0.1", trace_ui:true, workspace_alpha:true, knowledge_automation:true, temporal_intelligence:true, agent_knowledge_runtime:true, production_foundation:true }));

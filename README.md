@@ -1,5 +1,9 @@
 # CERVEL v0.1 Starter Repository
 
+## Desktop Alpha
+
+CERVEL Desktop is a sandboxed macOS, Windows, and Linux client for the Local Node, not a knowledge-runtime fork. It provides encrypted Vault onboarding, notes, files, sources, drag-and-drop ingestion, search, cited answers, Trace, graph, health, backups, provider privacy controls, tray operation, crash recovery, signed releases, and automatic updates. See [docs/DESKTOP_ALPHA.md](docs/DESKTOP_ALPHA.md).
+
 CERVEL is a sovereign knowledge operating system / knowledge infrastructure layer for humans and AI.
 
 This starter repository implements the first frozen contracts:

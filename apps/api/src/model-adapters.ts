@@ -61,9 +61,21 @@ export class GeminiGenerateContentAdapter implements ReasoningAdapter {
   }
 }
 
+export class OpenAICompatibleAdapter implements ReasoningAdapter {
+  id = "openai-compatible:chat-completions";
+  constructor(private readonly baseUrl:string,private readonly apiKey:string,private readonly model:string,private readonly allowNetwork:boolean){}
+  async execute(input:ReasoningInput):Promise<ReasoningOutput>{
+    const url=new URL("chat/completions",this.baseUrl.endsWith("/")?this.baseUrl:`${this.baseUrl}/`),local=["localhost","127.0.0.1","::1"].includes(url.hostname);
+    if(!local&&!this.allowNetwork)throw new Error("MODEL_NETWORK_PERMISSION_REQUIRED");
+    const evidence=input.evidence.map((e,i)=>`[${i+1}] ${e.text}\nSOURCE ${e.citation}`).join("\n\n"),response=await fetch(url,{method:"POST",headers:{"authorization":`Bearer ${this.apiKey}`,"content-type":"application/json"},body:JSON.stringify({model:this.model,messages:[{role:"system",content:"Answer only from supplied evidence and cite it with [n]."},{role:"user",content:`QUESTION: ${input.query}\nEVIDENCE:\n${evidence}`}],temperature:0}),signal:externalTimeoutSignal()});
+    if(!response.ok)throw new Error(`OPENAI_COMPATIBLE_ADAPTER_${response.status}`);const data=await response.json() as any,text=String(data.choices?.[0]?.message?.content??"").trim();if(!text)throw new Error("OPENAI_COMPATIBLE_ADAPTER_EMPTY_RESPONSE");return {text,provider:"openai-compatible",model:this.model,external_response_id:data.id};
+  }
+}
+
 export function resolveReasoningAdapter(): ReasoningAdapter {
   const provider = (process.env.CERVEL_REASONING_PROVIDER ?? "local").toLowerCase();
   if (provider === "openai" && process.env.OPENAI_API_KEY) return new OpenAIResponsesAdapter(process.env.OPENAI_API_KEY);
   if ((provider === "gemini" || provider === "google") && process.env.GEMINI_API_KEY) return new GeminiGenerateContentAdapter(process.env.GEMINI_API_KEY);
+  if(provider==="openai-compatible"&&process.env.CERVEL_MODEL_BASE_URL&&process.env.CERVEL_MODEL_NAME)return new OpenAICompatibleAdapter(process.env.CERVEL_MODEL_BASE_URL,process.env.CERVEL_MODEL_API_KEY??"",process.env.CERVEL_MODEL_NAME,process.env.CERVEL_ALLOW_MODEL_NETWORK==="true");
   return new DeterministicReasoningAdapter();
 }

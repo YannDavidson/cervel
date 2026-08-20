@@ -2,6 +2,10 @@
   "name": "cervel-v0.1-starter",
   "private": true,
   "version": "0.1.0",
+  "description": "Sovereign knowledge infrastructure",
+  "author": "CSIX AI LABS LLC",
+  "main": "dist/apps/desktop/src/main.js",
+  "productName": "CERVEL",
   "bin": { "cervel": "dist/apps/local-node/src/cli.js" },
   "scripts": {
     "dev:api": "tsx apps/api/src/server.ts",
@@ -19,12 +23,16 @@
     "test": "jest",
     "test:contracts": "jest tests/contracts",
     "test:ckuri": "jest tests/ckuri",
-    "test:vault": "jest tests/local-node"
+    "test:vault": "jest tests/local-node",
+    "desktop:dev": "npm run build && electron .",
+    "desktop:package": "npm run build && electron-builder",
+    "test:desktop": "jest tests/desktop"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@simplewebauthn/server": "^13.1.0",
     "fastify": "^5.0.0",
+    "electron-updater": "^6.6.2",
     "jose": "^6.0.0",
     "pg": "^8.0.0"
   },
@@ -32,9 +40,23 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
     "tsx": "^4.0.0",
     "typescript": "^5.6.3"
+  },
+  "build": {
+    "appId": "ai.cervel.desktop",
+    "directories": {"output": "release/desktop"},
+    "artifactName": "CERVEL-${version}-${os}-${arch}.${ext}",
+    "files": ["dist/**/*", "apps/desktop/renderer/**/*", "package.json", "node_modules/**/*"],
+    "asarUnpack": ["dist/apps/local-node/**/*", "dist/apps/api/**/*", "dist/scripts/**/*"],
+    "mac": {"category": "public.app-category.productivity", "target": ["dmg", "zip"], "hardenedRuntime": true, "gatekeeperAssess": false, "entitlements": "apps/desktop/build/entitlements.mac.plist", "entitlementsInherit": "apps/desktop/build/entitlements.mac.plist"},
+    "win": {"target": ["nsis"]},
+    "linux": {"target": ["AppImage", "deb"], "category": "Office"},
+    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true},
+    "publish": {"provider": "github", "owner": "YannDavidson", "repo": "cervel", "releaseType": "draft"}
   }
 }

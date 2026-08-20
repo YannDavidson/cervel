@@ -3,9 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "description": "Sovereign knowledge infrastructure",
-  "author": "CSIX AI LABS LLC",
+  "author": {"name": "CSIX AI LABS LLC", "email": "30988886+YannDavidson@users.noreply.github.com"},
   "main": "dist/apps/desktop/src/main.js",
   "productName": "CERVEL",
+  "desktopName": "ai.cervel.desktop",
   "bin": { "cervel": "dist/apps/local-node/src/cli.js" },
   "scripts": {
     "dev:api": "tsx apps/api/src/server.ts",
@@ -55,7 +56,7 @@
     "asarUnpack": ["dist/apps/local-node/**/*", "dist/apps/api/**/*", "dist/scripts/**/*"],
     "mac": {"category": "public.app-category.productivity", "target": ["dmg", "zip"], "hardenedRuntime": true, "gatekeeperAssess": false, "entitlements": "apps/desktop/build/entitlements.mac.plist", "entitlementsInherit": "apps/desktop/build/entitlements.mac.plist"},
     "win": {"target": ["nsis"]},
-    "linux": {"target": ["AppImage", "deb"], "category": "Office"},
+    "linux": {"target": ["AppImage", "deb"], "category": "Office", "maintainer": "CSIX AI LABS LLC <30988886+YannDavidson@users.noreply.github.com>", "syncDesktopName": true, "executableName": "cervel", "synopsis": "Sovereign knowledge desktop", "description": "A secure desktop client for the CERVEL Local Node."},
     "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true},
     "publish": {"provider": "github", "owner": "YannDavidson", "repo": "cervel", "releaseType": "draft"}
   }

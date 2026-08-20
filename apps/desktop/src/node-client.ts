@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { atomicWrite, createVault, decryptBuffer, encryptBuffer, unlockVault, type VaultManifest, type VaultSecrets } from "../../local-node/src/vault";
+import { LocalCloudSyncController } from "../../local-node/src/cloud-sync";
 
 export type BootstrapIdentity={nodeId:string;workspaceId:string;principalId:string;storageLocationId:string;authority:string};
 export type ProviderConfiguration={provider:"local"|"ollama"|"openai-compatible";base_url:string;model:string;api_key?:string;allow_network:boolean};
@@ -12,13 +13,13 @@ const contentTypes:Record<string,string>={".txt":"text/plain",".md":"text/markdo
 const wait=(ms:number)=>new Promise(resolveWait=>setTimeout(resolveWait,ms));
 
 export class LocalNodeClient {
-  private root:string|null=null;private passphrase:string|null=null;private unlocked:Unlocked|null=null;private identity:BootstrapIdentity|null=null;private readonly port:number;
+  private root:string|null=null;private passphrase:string|null=null;private unlocked:Unlocked|null=null;private identity:BootstrapIdentity|null=null;private cloudSync:LocalCloudSyncController|null=null;private readonly port:number;
   constructor(private readonly appRoot:string,port=8787){this.port=port;}
   get isOpen(){return Boolean(this.root&&this.unlocked&&this.identity);}
   get vaultRoot(){return this.root;}
   async create(root:string,name:string,authority:string,passphrase:string):Promise<OpenVault>{await createVault(root,name,authority,passphrase);return this.open(root,passphrase);}
   async open(root:string,passphrase:string):Promise<OpenVault>{this.root=resolve(root);this.passphrase=passphrase;try{this.unlocked=await unlockVault(this.root,passphrase);await this.ensureStarted();this.identity=await this.readIdentity();return {root:this.root,manifest:this.unlocked.manifest,identity:this.identity,url:this.url};}catch(error){this.forget();throw error;}}
-  forget():void{this.root=null;this.passphrase=null;this.unlocked=null;this.identity=null;}
+  forget():void{this.root=null;this.passphrase=null;this.unlocked=null;this.identity=null;this.cloudSync=null;}
   private get url(){return `http://127.0.0.1:${this.port}`;}
   private cliPath():string{const compiled=join(this.appRoot,"dist/apps/local-node/src/cli.js");return compiled;}
   private async runCli(command:string,args:string[]=[]):Promise<Record<string,unknown>>{
@@ -46,6 +47,8 @@ export class LocalNodeClient {
   async operation(command:"backup"|"vault-verify"|"restore",input?:string):Promise<any>{if(command==="vault-verify")return this.runCli("vault",["verify"]);if(command==="restore")return this.runCli("restore",["--from",String(input)]);return this.runCli(command);}
   async getProviderConfiguration():Promise<ProviderConfiguration>{if(!this.root||!this.unlocked)throw new Error("VAULT_LOCKED");try{return JSON.parse(decryptBuffer(await readFile(join(this.root,"private","desktop-provider.cvlt")),this.unlocked.artifactKey).toString("utf8"));}catch{return {provider:"local",base_url:"http://127.0.0.1:11434",model:"",allow_network:false};}}
   async setProviderConfiguration(config:ProviderConfiguration):Promise<ProviderConfiguration>{if(!this.root||!this.unlocked)throw new Error("VAULT_LOCKED");let parsed:URL;try{parsed=new URL(config.base_url);}catch{throw new Error("PROVIDER_URL_INVALID");}const local=["localhost","127.0.0.1","::1"].includes(parsed.hostname);if(!config.allow_network&&!local&&config.provider!=="local")throw new Error("REMOTE_PROVIDER_REQUIRES_NETWORK_PERMISSION");const previous=await this.getProviderConfiguration(),saved={...config,api_key:config.api_key||previous.api_key};await atomicWrite(join(this.root,"private","desktop-provider.cvlt"),encryptBuffer(Buffer.from(JSON.stringify(saved)),this.unlocked.artifactKey));await this.runCli("lock");for(let i=0;i<20&&await this.healthy();i++)await wait(100);await this.ensureStarted();this.identity=await this.readIdentity();return {...saved,api_key:saved.api_key?"••••••••":undefined};}
+  private async syncController(){if(this.cloudSync)return this.cloudSync;if(!this.root||!this.passphrase)throw new Error("VAULT_LOCKED");this.cloudSync=await LocalCloudSyncController.load(this.root,this.passphrase);return this.cloudSync;}
+  async cloudSyncAction(action:string,input:any={}):Promise<any>{if(!this.root||!this.passphrase)throw new Error("VAULT_LOCKED");if(action==="enable"){if(!input.relay_url)throw new Error("SYNC_RELAY_REQUIRED");this.cloudSync=await LocalCloudSyncController.enable(this.root,this.passphrase,input.relay_url);return this.cloudSync.status();}if(action==="status"){try{return (await this.syncController()).status();}catch(error:any){if(error?.code==="ENOENT")return {enabled:false};throw error;}}const controller=await this.syncController();if(action==="run")return controller.sync();if(action==="pause")return controller.pause(true);if(action==="resume")return controller.pause(false);if(action==="reset")return controller.reset();if(action==="backup")return controller.backup();if(action==="delete")return controller.deleteRemote(input.confirm_vault_id);if(action==="revoke")return controller.revoke(input.device_id);throw new Error("SYNC_ACTION_UNSUPPORTED");}
 }
 
 export async function discoverVaults(home:string):Promise<Array<{path:string;name:string;id:string;created_at:string}>>{const base=join(home,".cervel","vaults");let entries:string[]=[];try{entries=await readdir(base);}catch{return [];}const found=[];for(const name of entries){const path=join(base,name);try{if(!(await stat(path)).isDirectory())continue;const manifest=JSON.parse(await readFile(join(path,"vault.json"),"utf8"));found.push({path,name:manifest.name,id:manifest.id,created_at:manifest.created_at});}catch{}}return found.sort((a,b)=>b.created_at.localeCompare(a.created_at));}

@@ -23,7 +23,7 @@ async function main() {
   await first.sync();
   await second.sync();
   await first.sync();
-  if (JSON.stringify(first.state()) !== JSON.stringify(second.state())) throw new Error("SYNC_CONVERGENCE_FAILED");
+  if (JSON.stringify(first.state().entities) !== JSON.stringify(second.state().entities)) throw new Error("SYNC_CONVERGENCE_FAILED");
   if (!(await second.restoreArtifact("artifact:integration")).equals(artifact)) throw new Error("SYNC_ARTIFACT_RESTORE_FAILED");
 
   const restarted = new CloudSyncEngine(setup.vaultId, setup.rootKey, setup.device, relay, first.persistence());

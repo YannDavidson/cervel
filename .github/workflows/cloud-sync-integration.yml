@@ -1,0 +1,45 @@
+name: CERVEL Cloud Sync Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['packages/cloud-sync/**','apps/sync-relay/**','apps/local-node/**','apps/desktop/**','db/migrations/**','scripts/validate-cloud-sync.ts','tests/cloud-sync/**','docs/CLOUD_SYNC.md','package*.json','.github/workflows/cloud-sync-integration.yml']
+jobs:
+  cloud-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cervel
+          POSTGRES_PASSWORD: cervel
+          POSTGRES_DB: cervel
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@127.0.0.1:55432/cervel
+      CERVEL_SYNC_RELAY_URL: http://127.0.0.1:8788
+      PORT: 8788
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm run db:migrate
+      - name: Start zero-knowledge relay
+        run: |
+          npm run start:sync-relay > /tmp/cervel-sync-relay.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:8788/ready && exit 0; sleep 1; done
+          cat /tmp/cervel-sync-relay.log
+          exit 1
+      - run: npm run test:cloud-sync -- --runInBand
+      - name: Validate PostgreSQL and HTTP convergence
+        run: node dist/scripts/validate-cloud-sync.js
+      - name: Show relay diagnostics
+        if: failure()
+        run: cat /tmp/cervel-sync-relay.log || true

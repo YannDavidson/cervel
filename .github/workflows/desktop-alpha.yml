@@ -1,0 +1,41 @@
+name: CERVEL Desktop Alpha
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  desktop-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:desktop -- --runInBand
+      - run: npm test -- --runInBand
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest, target: mac}
+          - {os: windows-latest, target: win}
+          - {os: ubuntu-latest, target: linux}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - name: Package unsigned verification build
+        run: npx electron-builder --${{ matrix.target }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cervel-desktop-${{ matrix.target }}
+          path: release/desktop/*
+          if-no-files-found: error

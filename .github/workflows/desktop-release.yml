@@ -1,0 +1,42 @@
+name: CERVEL Desktop Release
+on:
+  push:
+    tags: ["desktop-v*"]
+permissions:
+  contents: write
+jobs:
+  signed-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest, target: mac}
+          - {os: windows-latest, target: win}
+          - {os: ubuntu-latest, target: linux}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - name: Require platform signing material
+        if: matrix.target != 'linux'
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == "mac" && -z "$CSC_LINK" ]]; then exit 1; fi
+          if [[ "${{ matrix.target }}" == "win" && -z "$WIN_CSC_LINK" ]]; then exit 1; fi
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE }}
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+      - name: Build, sign, and publish update
+        run: npx electron-builder --${{ matrix.target }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}

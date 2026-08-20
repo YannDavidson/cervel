@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { atomicWrite, createVault, decryptBuffer, encryptBuffer, unlockVault, type VaultManifest, type VaultSecrets } from "../../local-node/src/vault";
 import { LocalCloudSyncController } from "../../local-node/src/cloud-sync";
@@ -18,8 +19,8 @@ export class LocalNodeClient {
   get isOpen(){return Boolean(this.root&&this.unlocked&&this.identity);}
   get vaultRoot(){return this.root;}
   async create(root:string,name:string,authority:string,passphrase:string):Promise<OpenVault>{await createVault(root,name,authority,passphrase);return this.open(root,passphrase);}
-  async open(root:string,passphrase:string):Promise<OpenVault>{this.root=resolve(root);this.passphrase=passphrase;try{this.unlocked=await unlockVault(this.root,passphrase);await this.ensureStarted();this.identity=await this.readIdentity();return {root:this.root,manifest:this.unlocked.manifest,identity:this.identity,url:this.url};}catch(error){this.forget();throw error;}}
-  forget():void{this.root=null;this.passphrase=null;this.unlocked=null;this.identity=null;this.cloudSync=null;}
+  async open(root:string,passphrase:string):Promise<OpenVault>{this.root=resolve(root);this.passphrase=passphrase;try{this.unlocked=await unlockVault(this.root,passphrase);await this.ensureStarted();this.identity=await this.readIdentity();await this.publishCaptureHost();return {root:this.root,manifest:this.unlocked.manifest,identity:this.identity,url:this.url};}catch(error){this.forget();throw error;}}
+  forget():void{void unlink(join(homedir(),".cervel","native-hosts","default.json")).catch(()=>{});this.root=null;this.passphrase=null;this.unlocked=null;this.identity=null;this.cloudSync=null;}
   private get url(){return `http://127.0.0.1:${this.port}`;}
   private cliPath():string{const compiled=join(this.appRoot,"dist/apps/local-node/src/cli.js");return compiled;}
   private async runCli(command:string,args:string[]=[]):Promise<Record<string,unknown>>{
@@ -35,6 +36,7 @@ export class LocalNodeClient {
   async status():Promise<Record<string,unknown>>{if(!this.root)return {open:false,running:false};const lifecycle=await this.runCli("status");return {...lifecycle,open:this.isOpen,healthy:await this.healthy(),url:this.url};}
   async lock():Promise<void>{if(this.root&&this.passphrase)await this.runCli("lock");this.forget();}
   private async readIdentity():Promise<BootstrapIdentity>{if(!this.root)throw new Error("VAULT_LOCKED");const raw=await readFile(join(this.root,"runtime","bootstrap.json"),"utf8"),parsed=JSON.parse(raw);return {nodeId:parsed.nodeId,workspaceId:parsed.workspaceId,principalId:parsed.principalId,storageLocationId:parsed.storageLocationId,authority:parsed.authority};}
+  private async publishCaptureHost():Promise<void>{if(!this.unlocked||!this.identity)return;await atomicWrite(join(homedir(),".cervel","native-hosts","default.json"),JSON.stringify({format:"cervel-capture-host/v0.1",vault:"default",local_node_url:this.url,local_api_token:this.unlocked.secrets.local_api_token,node_id:this.identity.nodeId,workspace_id:this.identity.workspaceId,principal_id:this.identity.principalId,storage_location_id:this.identity.storageLocationId})+"\n",0o600);}
   async request(path:string,init:{method?:string;body?:unknown}={}):Promise<any>{if(!this.unlocked||!this.identity)throw new Error("VAULT_LOCKED");const response=await fetch(`${this.url}${path}`,{method:init.method??"GET",headers:{"content-type":"application/json","x-cervel-local-token":this.unlocked.secrets.local_api_token,"x-cervel-principal-id":this.identity.principalId},body:init.body===undefined?undefined:JSON.stringify(init.body),signal:AbortSignal.timeout(30000)});const text=await response.text();let payload:any;try{payload=text?JSON.parse(text):null;}catch{payload={error:text};}if(!response.ok)throw new Error(payload?.error??`LOCAL_NODE_HTTP_${response.status}`);return payload;}
   async ingestFile(path:string):Promise<any>{const bytes=await readFile(path),title=basename(path),object=await this.request("/v1/objects",{method:"POST",body:{node_id:this.identity!.nodeId,workspace_id:this.identity!.workspaceId,type:"document",title}});const artifact=await this.request(`/v1/objects/${object.id}/artifacts`,{method:"POST",body:{storage_location_id:this.identity!.storageLocationId,filename:title,mime_type:contentTypes[extname(path).toLowerCase()]??"application/octet-stream",content_base64:bytes.toString("base64")}});return {object,artifact};}
   async createNote(title:string,content:string):Promise<any>{const object=await this.request("/v1/objects",{method:"POST",body:{node_id:this.identity!.nodeId,workspace_id:this.identity!.workspaceId,type:"note",title,summary:content.slice(0,280)}});const artifact=await this.request(`/v1/objects/${object.id}/artifacts`,{method:"POST",body:{storage_location_id:this.identity!.storageLocationId,filename:`${title.replace(/[^a-z0-9_-]+/gi,"-")}.md`,mime_type:"text/markdown",content_base64:Buffer.from(content).toString("base64")}});return {object,artifact};}

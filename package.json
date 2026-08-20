@@ -20,6 +20,8 @@
     "start:api": "node dist/apps/api/src/server.js",
     "dev:sync-relay": "tsx apps/sync-relay/src/server.ts",
     "start:sync-relay": "node dist/apps/sync-relay/src/server.js",
+    "build:capture-extension": "tsx scripts/build-capture-extension.ts",
+    "start:capture-host": "node dist/apps/capture-native-host/src/host.js",
     "sync:sources": "tsx workers/source-sync.ts",
     "db:migrate": "tsx scripts/db/migrate.ts",
     "db:bootstrap": "tsx scripts/db/bootstrap.ts",
@@ -35,7 +37,8 @@
     "desktop:dev": "npm run build && electron .",
     "desktop:package": "npm run build && electron-builder",
     "test:desktop": "jest tests/desktop",
-    "test:cloud-sync": "jest tests/cloud-sync"
+    "test:cloud-sync": "jest tests/cloud-sync",
+    "test:capture-extension": "jest tests/capture-extension"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

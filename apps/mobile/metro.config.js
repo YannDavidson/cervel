@@ -1,0 +1,1 @@
+const {getDefaultConfig}=require("expo/metro-config"),path=require("node:path"),config=getDefaultConfig(__dirname);config.watchFolders=[path.resolve(__dirname,"../../packages/mobile-capture")];config.resolver.nodeModulesPaths=[path.resolve(__dirname,"node_modules"),path.resolve(__dirname,"../../node_modules")];module.exports=config;

@@ -30,6 +30,7 @@ function registerIpc():void{
   ipcMain.handle("node:choose-files",async()=>{const result=await dialog.showOpenDialog({properties:["openFile","multiSelections"]});if(result.canceled)return [];await Promise.all(result.filePaths.map(path=>nodeClient.ingestFile(path)));return result.filePaths;});
   ipcMain.handle("config:get",()=>nodeClient.getProviderConfiguration());ipcMain.handle("config:save",(_,input:ProviderConfiguration)=>nodeClient.setProviderConfiguration(input));ipcMain.handle("app:version",()=>app.getVersion());ipcMain.handle("app:show",()=>window?.show());
   ipcMain.handle("sync:action",(_,{action,input})=>nodeClient.cloudSyncAction(action,input));
+  ipcMain.handle("mobile:device",(_,{action,input})=>nodeClient.mobileDeviceAction(action,input));
 }
 
 function supervise():void{restartTimer=setInterval(async()=>{if(!nodeClient.isOpen)return;const healthy=await nodeClient.healthy();if(healthy){restartFailures=0;return;}restartFailures++;send("node:status-changed",{open:true,healthy:false,restarting:true,attempt:restartFailures});if(restartFailures>=2){try{await nodeClient.ensureStarted();restartFailures=0;send("node:status-changed",await nodeClient.status());}catch(error){send("node:status-changed",{open:true,healthy:false,error:error instanceof Error?error.message:String(error)});}}},5000);}

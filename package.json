@@ -38,7 +38,8 @@
     "desktop:package": "npm run build && electron-builder",
     "test:desktop": "jest tests/desktop",
     "test:cloud-sync": "jest tests/cloud-sync",
-    "test:capture-extension": "jest tests/capture-extension"
+    "test:capture-extension": "jest tests/capture-extension",
+    "test:mobile-capture": "jest tests/mobile-capture"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

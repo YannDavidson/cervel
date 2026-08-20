@@ -20,6 +20,7 @@ import { registerAgentRoutes } from "./agent-routes";
 import { assertProductionConfiguration, registerProductionLifecycle } from "./production";
 import { registerLocalNodeRoutes } from "./local-node-routes";
 import { registerCaptureRoutes } from "./capture-routes";
+import { registerMobileRoutes } from "./mobile-routes";
 
 assertProductionConfiguration();
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
@@ -27,7 +28,7 @@ if(process.env.CERVEL_RUNTIME_MODE==="local"){
   const token=process.env.CERVEL_LOCAL_API_TOKEN;
   if(!token)throw new Error("CERVEL_LOCAL_API_TOKEN is required in local mode");
   const expected=createHash("sha256").update(token).digest();
-  app.addHook("onRequest",async request=>{if(request.url==="/live"||request.url==="/ready"||request.url==="/health")return;const supplied=request.headers["x-cervel-local-token"],actual=createHash("sha256").update(typeof supplied==="string"?supplied:"").digest();if(!timingSafeEqual(actual,expected))throw Object.assign(new Error("LOCAL_NODE_UNAUTHORIZED"),{statusCode:401});});
+  app.addHook("onRequest",async request=>{if(request.url==="/live"||request.url==="/ready"||request.url==="/health"||request.url.startsWith("/v1/mobile/"))return;const supplied=request.headers["x-cervel-local-token"],actual=createHash("sha256").update(typeof supplied==="string"?supplied:"").digest();if(!timingSafeEqual(actual,expected))throw Object.assign(new Error("LOCAL_NODE_UNAUTHORIZED"),{statusCode:401});});
 }
 registerProductionLifecycle(app);
 registerWorkspaceRoutes(app);
@@ -36,6 +37,7 @@ registerEvolutionRoutes(app);
 registerAgentRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerLocalNodeRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerCaptureRoutes(app);
+if(process.env.CERVEL_RUNTIME_MODE==="local")registerMobileRoutes(app);
 
 function requiredHeaderPrincipal(request: { headers: Record<string, unknown> }): string { const raw=request.headers["x-cervel-principal-id"]; if(typeof raw!=="string"||!raw){const error=new Error("X-CERVEL-PRINCIPAL-ID is required");(error as Error&{statusCode?:number}).statusCode=401;throw error;} return raw; }
 app.get("/health", async () => ({ ok:true, service:"cervel-node-alpha", cortex:"knowledge-evolution-v0.1", trace_ui:true, workspace_alpha:true, knowledge_automation:true, temporal_intelligence:true, agent_knowledge_runtime:true, production_foundation:true }));

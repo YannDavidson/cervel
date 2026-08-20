@@ -14,5 +14,6 @@
     "workers/**/*.ts",
     "scripts/**/*.ts",
     "tests/**/*.ts"
-  ]
+  ],
+  "exclude": ["apps/mobile/**"]
 }

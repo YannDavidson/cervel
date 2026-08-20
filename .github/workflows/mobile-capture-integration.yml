@@ -1,0 +1,58 @@
+name: CERVEL Mobile Capture Integration
+on:
+  pull_request:
+    branches: [main]
+    paths: ['apps/mobile/**','apps/api/src/mobile-routes.ts','apps/api/src/server.ts','apps/desktop/src/**','packages/mobile-capture/**','db/migrations/026_mobile_capture.sql','tests/mobile-capture/**','docs/MOBILE_CAPTURE.md','package*.json','.github/workflows/mobile-capture-integration.yml']
+jobs:
+  mobile-capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CERVEL_VAULT_PASSPHRASE: correct-horse-battery-staple-mobile-ci
+      VAULT: /tmp/cervel-mobile-vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:mobile-capture -- --runInBand
+      - name: Validate Expo application
+        working-directory: apps/mobile
+        run: |
+          npm ci
+          npm run typecheck
+          EXPO_NO_TELEMETRY=1 npx expo config --type public --json >/tmp/cervel-mobile-expo.json
+          jq -e '.name == "CERVEL Capture" and .ios.bundleIdentifier == "ai.cervel.capture" and .android.package == "ai.cervel.capture"' /tmp/cervel-mobile-expo.json
+      - name: Start real Local Node
+        run: |
+          npm run --silent cervel -- init --vault "$VAULT" --name 'Mobile CI Vault' --authority mobile-ci
+          npm run --silent cervel -- start --vault "$VAULT"
+          for i in {1..30}; do curl -fsS http://127.0.0.1:8787/ready && break; sleep 1; done
+      - name: Resolve local credentials
+        run: |
+          node - <<'NODE' >> "$GITHUB_ENV"
+          const fs=require('fs'),crypto=require('crypto'),m=JSON.parse(fs.readFileSync(process.env.VAULT+'/vault.json')),
+          p=fs.readFileSync(process.env.VAULT+'/private/secrets.cvlt'),k=crypto.scryptSync(process.env.CERVEL_VAULT_PASSPHRASE,Buffer.from(m.encryption.salt,'base64'),32,{N:32768,r:8,p:1,maxmem:67108864}),
+          d=crypto.createDecipheriv('aes-256-gcm',k,p.subarray(6,18));d.setAuthTag(p.subarray(18,34));s=JSON.parse(Buffer.concat([d.update(p.subarray(34)),d.final()]));console.log('LOCAL_TOKEN='+s.local_api_token)
+          NODE
+          jq -r '"NODE_ID="+.nodeId,"WORKSPACE_ID="+.workspaceId,"PRINCIPAL_ID="+.principalId' "$VAULT/runtime/bootstrap.json" >> "$GITHUB_ENV"
+      - name: Enroll, capture, retrieve, deduplicate, and revoke
+        run: |
+          set -euo pipefail
+          LOCAL=(-H "x-cervel-local-token: $LOCAL_TOKEN" -H "x-cervel-principal-id: $PRINCIPAL_ID" -H 'content-type: application/json')
+          DEVICE=$(curl -fsS -X POST http://127.0.0.1:8787/v1/local/mobile/devices "${LOCAL[@]}" -d "{\"node_id\":\"$NODE_ID\",\"workspace_id\":\"$WORKSPACE_ID\",\"label\":\"CI phone\",\"platform\":\"ios\"}")
+          DEVICE_ID=$(jq -r .device_id <<<"$DEVICE"); CAPABILITY=$(jq -r .capability <<<"$DEVICE")
+          BODY=$(jq -nc --arg device "$DEVICE_ID" '{protocol:"cervel-mobile-capture/v0.1",capture_id:"mobile_ci_000001",device_id:$device,capture_type:"text",queued_at:"2026-08-20T12:00:00Z",vault_ref:"mobile-ci",title:"Sovereign mobile evidence",text:"Mobile capture remains available offline and preserves provenance.",tags:["mobile","offline"],consent:{location:false,timestamp:false},provenance:{acquisition:"cervel_mobile",platform:"ios",derivatives:[],trust:"untrusted_captured_content",instruction_policy:"never_execute"}}')
+          MOBILE=(-H "authorization: Bearer $CAPABILITY" -H 'content-type: application/json')
+          FIRST=$(curl -fsS -X POST http://127.0.0.1:8787/v1/mobile/captures "${MOBILE[@]}" -d "$BODY")
+          jq -e '.duplicate == false and .receipt_id and .cko_id and .status == "ready"' <<<"$FIRST"
+          RECEIPT_ID=$(jq -r .receipt_id <<<"$FIRST")
+          curl -fsS "http://127.0.0.1:8787/v1/mobile/receipts/$RECEIPT_ID" "${MOBILE[@]}" | jq -e '.status == "ready" and .cko_id'
+          curl -fsS -X POST http://127.0.0.1:8787/v1/mobile/captures "${MOBILE[@]}" -d "$BODY" | jq -e '.duplicate == true'
+          curl -fsS -X POST http://127.0.0.1:8787/v1/mobile/retrieve "${MOBILE[@]}" -d '{"query":"mobile offline provenance"}' | jq -e '.results | length > 0'
+          curl -fsS -X DELETE "http://127.0.0.1:8787/v1/local/mobile/devices/$DEVICE_ID" "${LOCAL[@]}"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/v1/mobile/retrieve "${MOBILE[@]}" -d '{"query":"revoked"}')" = 401
+      - name: Show diagnostics
+        if: failure()
+        run: cat "$VAULT/runtime/node.log" || true

@@ -20,7 +20,7 @@ async function main() {
     let nodeId: string;
     const existingNode = await client.query(`SELECT id FROM nodes WHERE slug = $1`, [authority]);
     if (existingNode.rowCount) nodeId = existingNode.rows[0].id;
-    else { nodeId = uuidv7(); await client.query(`INSERT INTO nodes (id,slug,name,deployment_mode) VALUES ($1,$2,$3,'managed')`,[nodeId, authority, nodeName]); }
+    else { nodeId = uuidv7(); const deploymentMode=process.env.CERVEL_RUNTIME_MODE==="local"?"edge":"managed"; await client.query(`INSERT INTO nodes (id,slug,name,deployment_mode) VALUES ($1,$2,$3,$4)`,[nodeId, authority, nodeName,deploymentMode]); }
 
     let principalId: string;
     const existingPrincipal = await client.query(`SELECT id FROM principals WHERE node_id = $1 AND external_subject = $2`,[nodeId, adminSubject]);
@@ -35,7 +35,7 @@ async function main() {
     let storageLocationId: string;
     const existingStorage = await client.query(`SELECT id FROM storage_locations WHERE node_id = $1 AND is_primary = true LIMIT 1`,[nodeId]);
     if (existingStorage.rowCount) storageLocationId = existingStorage.rows[0].id;
-    else { storageLocationId = uuidv7(); await client.query(`INSERT INTO storage_locations (id,node_id,provider_type,config_ref,is_primary) VALUES ($1,$2,'s3','env:s3',true)`,[storageLocationId, nodeId]); }
+    else { storageLocationId = uuidv7(); const local=process.env.CERVEL_STORAGE_DRIVER==="vault"; await client.query(`INSERT INTO storage_locations (id,node_id,provider_type,config_ref,is_primary) VALUES ($1,$2,$3,$4,true)`,[storageLocationId, nodeId,local?"local":"s3",local?"vault:artifacts":"env:s3"]); }
 
     await client.query("COMMIT");
     console.log(JSON.stringify({event:"cervel_bootstrap",nodeId,workspaceId,principalId,storageLocationId,authority}));

@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { db, withTransaction } from "./db";
 import { createKnowledgeObject } from "./objects";
 import { registerArtifact } from "./artifacts";
@@ -20,6 +21,12 @@ import { assertProductionConfiguration, registerProductionLifecycle } from "./pr
 
 assertProductionConfiguration();
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
+if(process.env.CERVEL_RUNTIME_MODE==="local"){
+  const token=process.env.CERVEL_LOCAL_API_TOKEN;
+  if(!token)throw new Error("CERVEL_LOCAL_API_TOKEN is required in local mode");
+  const expected=createHash("sha256").update(token).digest();
+  app.addHook("onRequest",async request=>{if(request.url==="/live"||request.url==="/ready"||request.url==="/health")return;const supplied=request.headers["x-cervel-local-token"],actual=createHash("sha256").update(typeof supplied==="string"?supplied:"").digest();if(!timingSafeEqual(actual,expected))throw Object.assign(new Error("LOCAL_NODE_UNAUTHORIZED"),{statusCode:401});});
+}
 registerProductionLifecycle(app);
 registerWorkspaceRoutes(app);
 registerConnectorRoutes(app);
@@ -45,4 +52,4 @@ app.get("/v1/answers/:id",async(request,reply)=>{const principalId=requiredHeade
 app.get("/v1/answers/:id/trace",async(request,reply)=>{const principalId=requiredHeaderPrincipal(request as never),{id}=request.params as {id:string};return reply.send(await withTransaction(client=>loadAnswerTrace(client,id,principalId)));});
 app.get("/trace/:id",async(request,reply)=>{const {id}=request.params as {id:string};return reply.type("text/html; charset=utf-8").send(renderTraceUI(id));});
 app.setErrorHandler((error,_request,reply)=>{const normalized=error instanceof Error?error:new Error(String(error));const status=(normalized as Error&{statusCode?:number}).statusCode??500;reply.code(status).send({error:normalized.message});});
-const port=Number(process.env.PORT??8787);app.listen({host:"0.0.0.0",port}).catch(async(error:unknown)=>{const normalized=error instanceof Error?error:new Error(String(error));app.log.error(normalized);await db.end();process.exit(1);});
+const port=Number(process.env.PORT??8787),host=process.env.HOST??(process.env.CERVEL_RUNTIME_MODE==="local"?"127.0.0.1":"0.0.0.0");app.listen({host,port}).catch(async(error:unknown)=>{const normalized=error instanceof Error?error:new Error(String(error));app.log.error(normalized);await db.end();process.exit(1);});

@@ -51,7 +51,7 @@ jobs:
           curl -fsS "http://127.0.0.1:8787/v1/mobile/receipts/$RECEIPT_ID" "${MOBILE[@]}" | jq -e '.status == "ready" and .cko_id'
           curl -fsS -X POST http://127.0.0.1:8787/v1/mobile/captures "${MOBILE[@]}" -d "$BODY" | jq -e '.duplicate == true'
           curl -fsS -X POST http://127.0.0.1:8787/v1/mobile/retrieve "${MOBILE[@]}" -d '{"query":"mobile offline provenance"}' | jq -e '.results | length > 0'
-          curl -fsS -X DELETE "http://127.0.0.1:8787/v1/local/mobile/devices/$DEVICE_ID" "${LOCAL[@]}"
+          curl -fsS -X DELETE "http://127.0.0.1:8787/v1/local/mobile/devices/$DEVICE_ID" "${LOCAL[@]}" -d '{}'
           test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/v1/mobile/retrieve "${MOBILE[@]}" -d '{"query":"revoked"}')" = 401
       - name: Show diagnostics
         if: failure()

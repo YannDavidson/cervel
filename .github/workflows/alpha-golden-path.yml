@@ -1,0 +1,71 @@
+name: Alpha Golden Path
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: alpha-golden-path-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  golden-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CERVEL_VAULT_PASSPHRASE: golden-path-ci-passphrase
+      CERVEL_GOLDEN_REPORT: reports/golden-path/golden-path.json
+      GOLDEN_VAULT: /tmp/cervel-alpha-golden-vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:golden-path
+      - name: Create and start encrypted Vault
+        run: |
+          npm run --silent cervel -- init --vault "$GOLDEN_VAULT" --name "Alpha Golden Path"
+          npm run --silent cervel -- start --vault "$GOLDEN_VAULT"
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8787/ready && break; sleep 1; done
+          curl --fail --silent http://127.0.0.1:8787/ready
+          CERVEL_VAULT_PASSPHRASE="$CERVEL_VAULT_PASSPHRASE" node -e "require('./dist/apps/local-node/src/vault.js').unlockVault(process.env.GOLDEN_VAULT,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))" > /tmp/golden-secrets.json
+          {
+            echo "CERVEL_LOCAL_API_TOKEN=$(jq -r .local_api_token /tmp/golden-secrets.json)"
+            echo "CERVEL_GOLDEN_NODE_ID=$(jq -r .nodeId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_WORKSPACE_ID=$(jq -r .workspaceId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_PRINCIPAL_ID=$(jq -r .principalId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_STORAGE_ID=$(jq -r .storageLocationId "$GOLDEN_VAULT/runtime/bootstrap.json")"
+          } >> "$GITHUB_ENV"
+      - name: Ingest, retrieve, answer, trace, sync and revoke
+        run: npm run --silent alpha:golden-path -- run
+      - name: Encrypted backup and integrity verification
+        run: |
+          npm run --silent cervel -- backup --vault "$GOLDEN_VAULT" | tee /tmp/golden-backup.json
+          npm run --silent cervel -- vault verify --vault "$GOLDEN_VAULT" | tee /tmp/golden-verify.json
+      - name: Restart persistence drill
+        run: |
+          npm run --silent cervel -- lock --vault "$GOLDEN_VAULT"
+          npm run --silent cervel -- start --vault "$GOLDEN_VAULT"
+          npm run --silent alpha:golden-path -- resume
+      - name: Destructive restore drill
+        run: |
+          BACKUP=$(jq -r .backup /tmp/golden-backup.json)
+          npm run --silent cervel -- restore --vault "$GOLDEN_VAULT" --from "$BACKUP"
+          npm run --silent cervel -- start --vault "$GOLDEN_VAULT"
+          CERVEL_GOLDEN_RESTORED=true npm run --silent alpha:golden-path -- resume
+      - name: Portable export and final gate
+        run: |
+          npm run --silent cervel -- export --vault "$GOLDEN_VAULT" --to /tmp/cervel-golden-export | tee /tmp/golden-export.json
+          npm run --silent alpha:golden-path -- finalize --backup-json /tmp/golden-backup.json --verify-json /tmp/golden-verify.json --export-dir /tmp/cervel-golden-export
+          jq -e '.result == "passed" and .release_qualification.automated_ci == "passed" and .release_qualification.signed_artifacts == "pending" and .release_qualification.real_devices == "pending"' "$CERVEL_GOLDEN_REPORT"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cervel-alpha-golden-path-${{ github.sha }}
+          path: |
+            reports/golden-path/
+            ${{ env.GOLDEN_VAULT }}/runtime/node.log
+          if-no-files-found: warn

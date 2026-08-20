@@ -1,0 +1,9 @@
+{
+  "protocol": "cervel-alpha-release-qualification/v0.1",
+  "tiers": {
+    "golden_path_ci": {"required": true, "evidence": "reports/golden-path/golden-path.json"},
+    "signed_artifacts": {"required_for_merge": false, "evidence": ["macos_notarized", "windows_signed", "linux_packaged", "ios_signed", "android_signed"]},
+    "real_devices": {"required_for_merge": false, "evidence": ["physical_ios", "physical_android", "browser_pairing", "sleep_wake", "poor_network", "camera_microphone", "biometric_lock", "background_delivery"]}
+  },
+  "rule": "CI must never represent signed-artifact or physical-device qualification as complete without externally supplied evidence."
+}

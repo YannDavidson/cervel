@@ -46,6 +46,7 @@
     "test:knowledge-compiler": "jest tests/knowledge-compiler",
     "test:deliverables": "jest tests/deliverables",
     "test:external-gateway": "jest tests/external-gateway",
+    "test:demo": "jest tests/demo-experience",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },
   "dependencies": {

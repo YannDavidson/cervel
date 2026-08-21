@@ -6,4 +6,5 @@ describe("External AI and Agent Gateway",()=>{
  test("fails closed after expiry or revocation",()=>{expect(authorize({...grant,revoked_at:new Date().toISOString()},"retrieval:read").code).toBe("GRANT_REVOKED");expect(authorize({...grant,expires_at:"2020-01-01T00:00:00Z"},"retrieval:read").code).toBe("GRANT_EXPIRED");});
  test("binds human write approval to the reviewed payload digest",()=>{const p=proposeWrite({id:"p",grant_id:"g",tool:"create_object",arguments:{title:"Approved"}});expect(approveWrite(p,p.input_digest).status).toBe("approved");expect(()=>approveWrite(p,tokenDigest("changed"))).toThrow("PROPOSAL_CHANGED_AFTER_REVIEW");});
  test("issues non-recoverable bearer credentials",()=>{const token=issueOpaqueToken();expect(token).toMatch(/^cvl_/);expect(tokenDigest(token)).toHaveLength(64);expect(tokenDigest(token)).not.toContain(token);});
+ test("fails closed when one response exceeds the byte ceiling",()=>{const d=authorize(grant,"retrieval:read",[{id:"fragment",bytes:101,sensitive:false}]);expect(d).toMatchObject({allowed:true,code:"BUDGET_PARTIAL",disclosed_ids:[],bytes:0});});
 });

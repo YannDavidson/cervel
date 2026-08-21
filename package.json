@@ -43,6 +43,7 @@
     "test:golden-path": "jest tests/golden-path",
     "test:intelligence-gateway": "jest tests/intelligence-gateway",
     "test:knowledge-compiler": "jest tests/knowledge-compiler",
+    "test:deliverables": "jest tests/deliverables",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },
   "dependencies": {

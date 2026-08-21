@@ -107,8 +107,11 @@ jobs:
           echo 'DEPLOY_PHASE=smoke' >> "$GITHUB_ENV"
           curl --fail --silent --show-error "$CERVEL_STAGING_URL/live" | tee /tmp/live.json
           curl --fail --silent --show-error "$CERVEL_STAGING_URL/ready" | tee /tmp/ready.json
+          curl --fail --silent --show-error "$CERVEL_STAGING_URL/v1/demo/health" | tee /tmp/demo-health.json
+          curl --fail --silent --show-error "$CERVEL_STAGING_URL/demo" | grep -q 'CERVEL Alpha Demo'
           jq -e '.ok == true' /tmp/live.json >/dev/null
           jq -e '.ok == true and .database == true and .mode == "staging"' /tmp/ready.json >/dev/null
+          jq -e '.ok == true and .isolated == true and .synthetic_data == true' /tmp/demo-health.json >/dev/null
 
       - name: Run recovery jobs once
         run: |

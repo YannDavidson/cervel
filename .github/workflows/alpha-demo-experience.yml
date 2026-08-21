@@ -1,0 +1,22 @@
+name: CERVEL Alpha Demo Experience
+on:
+  pull_request:
+    paths:
+      - "packages/demo-experience/**"
+      - "apps/api/src/demo-routes.ts"
+      - "tests/demo-experience/**"
+      - ".github/workflows/alpha-demo-experience.yml"
+  push:
+    branches: [main]
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:demo

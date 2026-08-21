@@ -1,0 +1,24 @@
+name: CERVEL Intelligence Gateway Integration
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  intelligence-gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:intelligence-gateway -- --runInBand
+      - name: Verify policy boundary
+        run: |
+          grep -q 'CERVEL_OFFLINE_ONLY' apps/api/src/intelligence-gateway.ts
+          grep -q 'intelligence_disclosure_receipts' db/migrations/027_intelligence_gateway.sql
+          grep -q 'ANTHROPIC_API_KEY' apps/api/src/model-adapters.ts

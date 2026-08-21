@@ -1,0 +1,23 @@
+name: Deliverables Engine
+on:
+  pull_request:
+    paths:
+      - "packages/deliverables/**"
+      - "packages/contracts/v0.1/deliverable.schema.json"
+      - "db/migrations/029_deliverables_engine.sql"
+      - "tests/deliverables/**"
+      - ".github/workflows/deliverables-engine-integration.yml"
+  push:
+    branches: [main]
+jobs:
+  deliverables:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:deliverables

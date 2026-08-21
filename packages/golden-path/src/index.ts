@@ -22,4 +22,4 @@ export class GoldenReport{
 }
 const escapeHtml=(v:string)=>v.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
 
-export const REQUIRED_GOLDEN_CHECKS=["vault_created","node_ready","desktop_boundary","browser_capture","mobile_capture","duplicate_detection","retrieval","cited_answer","trace_complete","prompt_injection_quarantined","restart_persistence","sync_convergence","revocation","backup_verified","restore_verified","portable_export","state_digest"];
+export const REQUIRED_GOLDEN_CHECKS=["vault_created","node_ready","desktop_boundary","browser_capture","mobile_capture","duplicate_detection","retrieval","cited_answer","trace_complete","intelligence_routing","prompt_injection_quarantined","restart_persistence","sync_convergence","revocation","backup_verified","restore_verified","portable_export","state_digest"];

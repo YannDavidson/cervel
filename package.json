@@ -20,6 +20,7 @@
     "start:api": "node dist/apps/api/src/server.js",
     "dev:sync-relay": "tsx apps/sync-relay/src/server.ts",
     "start:sync-relay": "node dist/apps/sync-relay/src/server.js",
+    "start:mcp": "node dist/apps/mcp-server/src/server.js",
     "build:capture-extension": "tsx scripts/build-capture-extension.ts",
     "start:capture-host": "node dist/apps/capture-native-host/src/host.js",
     "sync:sources": "tsx workers/source-sync.ts",
@@ -44,6 +45,7 @@
     "test:intelligence-gateway": "jest tests/intelligence-gateway",
     "test:knowledge-compiler": "jest tests/knowledge-compiler",
     "test:deliverables": "jest tests/deliverables",
+    "test:external-gateway": "jest tests/external-gateway",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },
   "dependencies": {

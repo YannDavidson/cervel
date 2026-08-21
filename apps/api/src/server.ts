@@ -23,6 +23,7 @@ import { registerCaptureRoutes } from "./capture-routes";
 import { registerMobileRoutes } from "./mobile-routes";
 import { registerIntelligenceRoutes } from "./intelligence-routes";
 import { registerKnowledgeCompilerRoutes } from "./knowledge-compiler-routes";
+import { registerExternalGatewayRoutes } from "./external-gateway-routes";
 
 assertProductionConfiguration();
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
@@ -30,7 +31,7 @@ if(process.env.CERVEL_RUNTIME_MODE==="local"){
   const token=process.env.CERVEL_LOCAL_API_TOKEN;
   if(!token)throw new Error("CERVEL_LOCAL_API_TOKEN is required in local mode");
   const expected=createHash("sha256").update(token).digest();
-  app.addHook("onRequest",async request=>{if(request.url==="/live"||request.url==="/ready"||request.url==="/health"||request.url.startsWith("/v1/mobile/"))return;const supplied=request.headers["x-cervel-local-token"],actual=createHash("sha256").update(typeof supplied==="string"?supplied:"").digest();if(!timingSafeEqual(actual,expected))throw Object.assign(new Error("LOCAL_NODE_UNAUTHORIZED"),{statusCode:401});});
+  app.addHook("onRequest",async request=>{const externalPublic=request.url==="/v1/external/device/code"||request.url==="/v1/external/token"||request.url==="/v1/external/search"||request.url==="/v1/external/reason"||request.url==="/v1/external/trace"||request.url==="/v1/external/write-proposals";if(request.url==="/live"||request.url==="/ready"||request.url==="/health"||request.url.startsWith("/v1/mobile/")||externalPublic)return;const supplied=request.headers["x-cervel-local-token"],actual=createHash("sha256").update(typeof supplied==="string"?supplied:"").digest();if(!timingSafeEqual(actual,expected))throw Object.assign(new Error("LOCAL_NODE_UNAUTHORIZED"),{statusCode:401});});
 }
 registerProductionLifecycle(app);
 registerWorkspaceRoutes(app);
@@ -39,6 +40,7 @@ registerEvolutionRoutes(app);
 registerAgentRoutes(app);
 registerIntelligenceRoutes(app);
 registerKnowledgeCompilerRoutes(app);
+registerExternalGatewayRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerLocalNodeRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerCaptureRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerMobileRoutes(app);

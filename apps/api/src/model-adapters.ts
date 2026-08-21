@@ -61,6 +61,12 @@ export class GeminiGenerateContentAdapter implements ReasoningAdapter {
   }
 }
 
+export class AnthropicMessagesAdapter implements ReasoningAdapter {
+  id="anthropic:messages";
+  constructor(private readonly apiKey:string,private readonly model=process.env.CERVEL_ANTHROPIC_MODEL??"claude-sonnet-4-5"){}
+  async execute(input:ReasoningInput):Promise<ReasoningOutput>{const evidence=input.evidence.map((e,i)=>`[${i+1}] ${e.text}\nSOURCE ${e.citation}`).join("\n\n"),response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":this.apiKey,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:this.model,max_tokens:2048,system:"Answer only from supplied evidence and cite it with [n].",messages:[{role:"user",content:`QUESTION: ${input.query}\nEVIDENCE:\n${evidence}`}]}),signal:externalTimeoutSignal()});if(!response.ok)throw new Error(`ANTHROPIC_ADAPTER_${response.status}`);const data=await response.json() as any,text=String(data.content?.filter((x:any)=>x.type==="text").map((x:any)=>x.text).join("")??"").trim();if(!text)throw new Error("ANTHROPIC_ADAPTER_EMPTY_RESPONSE");return{text,provider:"anthropic",model:this.model,external_response_id:data.id};}
+}
+
 export class OpenAICompatibleAdapter implements ReasoningAdapter {
   id = "openai-compatible:chat-completions";
   constructor(private readonly baseUrl:string,private readonly apiKey:string,private readonly model:string,private readonly allowNetwork:boolean){}
@@ -72,10 +78,14 @@ export class OpenAICompatibleAdapter implements ReasoningAdapter {
   }
 }
 
-export function resolveReasoningAdapter(): ReasoningAdapter {
-  const provider = (process.env.CERVEL_REASONING_PROVIDER ?? "local").toLowerCase();
+export function resolveReasoningAdapter(requestedProvider?:string): ReasoningAdapter {
+  const provider = (requestedProvider??process.env.CERVEL_REASONING_PROVIDER ?? "local").toLowerCase();
   if (provider === "openai" && process.env.OPENAI_API_KEY) return new OpenAIResponsesAdapter(process.env.OPENAI_API_KEY);
+  if(provider==="anthropic"&&process.env.ANTHROPIC_API_KEY)return new AnthropicMessagesAdapter(process.env.ANTHROPIC_API_KEY);
   if ((provider === "gemini" || provider === "google") && process.env.GEMINI_API_KEY) return new GeminiGenerateContentAdapter(process.env.GEMINI_API_KEY);
+  if(provider==="openrouter"&&process.env.OPENROUTER_API_KEY)return new OpenAICompatibleAdapter("https://openrouter.ai/api/v1/",process.env.OPENROUTER_API_KEY,process.env.CERVEL_OPENROUTER_MODEL??"openai/gpt-5-mini",true);
+  if(provider==="enterprise")return new OpenAICompatibleAdapter(process.env.CERVEL_ENTERPRISE_MODEL_URL??process.env.CERVEL_MODEL_BASE_URL??"",process.env.CERVEL_ENTERPRISE_MODEL_API_KEY??process.env.CERVEL_MODEL_API_KEY??"",process.env.CERVEL_ENTERPRISE_MODEL_NAME??process.env.CERVEL_MODEL_NAME??"",process.env.CERVEL_ALLOW_MODEL_NETWORK==="true");
+  if(provider==="local:ollama"||provider==="ollama")return new OpenAICompatibleAdapter(process.env.CERVEL_OLLAMA_URL??process.env.CERVEL_MODEL_BASE_URL??"http://127.0.0.1:11434/v1/","",process.env.CERVEL_OLLAMA_MODEL??process.env.CERVEL_MODEL_NAME??"qwen3:8b",false);
   if(provider==="openai-compatible"&&process.env.CERVEL_MODEL_BASE_URL&&process.env.CERVEL_MODEL_NAME)return new OpenAICompatibleAdapter(process.env.CERVEL_MODEL_BASE_URL,process.env.CERVEL_MODEL_API_KEY??"",process.env.CERVEL_MODEL_NAME,process.env.CERVEL_ALLOW_MODEL_NETWORK==="true");
   return new DeterministicReasoningAdapter();
 }

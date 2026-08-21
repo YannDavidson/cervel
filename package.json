@@ -41,6 +41,7 @@
     "test:capture-extension": "jest tests/capture-extension",
     "test:mobile-capture": "jest tests/mobile-capture",
     "test:golden-path": "jest tests/golden-path",
+    "test:intelligence-gateway": "jest tests/intelligence-gateway",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },
   "dependencies": {

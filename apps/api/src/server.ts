@@ -22,6 +22,7 @@ import { registerLocalNodeRoutes } from "./local-node-routes";
 import { registerCaptureRoutes } from "./capture-routes";
 import { registerMobileRoutes } from "./mobile-routes";
 import { registerIntelligenceRoutes } from "./intelligence-routes";
+import { registerKnowledgeCompilerRoutes } from "./knowledge-compiler-routes";
 
 assertProductionConfiguration();
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
@@ -37,6 +38,7 @@ registerConnectorRoutes(app);
 registerEvolutionRoutes(app);
 registerAgentRoutes(app);
 registerIntelligenceRoutes(app);
+registerKnowledgeCompilerRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerLocalNodeRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerCaptureRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerMobileRoutes(app);

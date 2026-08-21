@@ -1,0 +1,9 @@
+import type{FastifyInstance,FastifyRequest}from"fastify";import{withTransaction}from"./db";import{assertPrincipalInNode}from"./access";import{appendCompilerTurn,compileSession,createCompilerSession,loadCompilation,reviewCompilation}from"./knowledge-compiler";import type{CompilationMode}from"../../../packages/knowledge-compiler/src";
+const principal=(r:FastifyRequest)=>{const p=r.headers["x-cervel-principal-id"];if(typeof p!=="string"||!p)throw Object.assign(new Error("X-CERVEL-PRINCIPAL-ID is required"),{statusCode:401});return p;};
+export function registerKnowledgeCompilerRoutes(app:FastifyInstance){
+ app.post("/v1/knowledge/sessions",async(r,reply)=>{const p=principal(r),b=r.body as any;return reply.code(201).send(await withTransaction(async c=>{await assertPrincipalInNode(c,p,b.node_id);return createCompilerSession(c,{nodeId:b.node_id,workspaceId:b.workspace_id,principalId:p,title:String(b.title??"Untitled session"),mode:(b.mode??"review")as CompilationMode});}));});
+ app.post("/v1/knowledge/sessions/:id/turns",async(r,reply)=>{const p=principal(r),{id}=r.params as any,b=r.body as any;return reply.code(201).send(await withTransaction(c=>appendCompilerTurn(c,{sessionId:id,principalId:p,role:b.role,content:b.content,answerId:b.answer_id,sourceCkoIds:b.source_cko_ids})));});
+ app.post("/v1/knowledge/sessions/:id/compile",async(r,reply)=>{const p=principal(r),{id}=r.params as any,b=(r.body??{})as any;return reply.code(201).send(await withTransaction(c=>compileSession(c,{sessionId:id,principalId:p,mode:b.mode})));});
+ app.get("/v1/knowledge/compilations/:id",async r=>withTransaction(c=>loadCompilation(c,(r.params as any).id,principal(r))));
+ app.post("/v1/knowledge/compilations/:id/review",async r=>{const b=r.body as any;return withTransaction(c=>reviewCompilation(c,(r.params as any).id,principal(r),Array.isArray(b.accepted_candidate_ids)?b.accepted_candidate_ids:[]));});
+}

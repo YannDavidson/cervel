@@ -1,0 +1,23 @@
+name: Knowledge Compiler
+on:
+  pull_request:
+    paths:
+      - "packages/knowledge-compiler/**"
+      - "apps/api/src/knowledge-compiler*"
+      - "db/migrations/028_knowledge_compiler.sql"
+      - "tests/knowledge-compiler/**"
+      - ".github/workflows/knowledge-compiler-integration.yml"
+  push:
+    branches: [main]
+jobs:
+  compiler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:knowledge-compiler

@@ -4,5 +4,6 @@ describe("CERVEL Alpha Demo Experience",()=>{
  test("starts with synthetic sources and can demonstrate offline mode",()=>{const a=seedDemo(),b=advanceDemo(a,{type:"offline"});expect(a.vault.mode).toBe("hosted-demo");expect(a.sources.every(x=>x.provenance.toLowerCase().includes("synthetic"))).toBe(true);expect(b.vault.online).toBe(false);});
  test("presents all seven investor narrative stages",()=>expect(DEMO_STAGES.map(x=>x[0])).toEqual(["capture","ask","trace","compile","create","connect","recover"]));
  test("renders a responsive, resettable and honestly labeled browser UI",()=>{expect(demoPage).toContain("CERVEL Alpha Demo");expect(demoPage).toContain("hosted, isolated demonstration using synthetic data");expect(demoPage).toContain("Reset demo");expect(demoPage).toContain("@media(max-width:700px)");expect(demoPage).toContain("localStorage.removeItem");});
+ test("escapes browser-restored state before inserting it into demo HTML",()=>{expect(demoPage).toContain("function esc(value)");expect(demoPage).toContain("esc(e.detail)");expect(demoPage).toContain("esc(s.title)");expect(demoPage).toContain("esc(state.answer.text)");});
  test("rejects unrecognized demo actions",()=>expect(()=>advanceDemo(seedDemo(),{type:"write_real_vault"})).toThrow("DEMO_ACTION_UNKNOWN"));
 });

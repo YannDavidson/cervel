@@ -24,7 +24,7 @@ SOCKET="/cloudsql/${CONNECTION_NAME}"
 
 mark_phase(){ if [[ -n "${GITHUB_ENV:-}" ]]; then echo "DEPLOY_PHASE=$1" >> "$GITHUB_ENV"; fi; }
 secret_exists(){ gcloud secrets describe "$1" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; }
-CORE_ENV="CERVEL_RUNTIME_MODE=staging,CERVEL_ENVIRONMENT_ID=staging,CERVEL_NODE_AUTHORITY=staging,CERVEL_NODE_NAME=CERVEL Staging,CERVEL_ALLOW_ALPHA_LOGIN=false,CERVEL_TRUST_PRINCIPAL_HEADER=false,CERVEL_STORAGE_MANAGED=true,DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET},S3_ENDPOINT=https://storage.googleapis.com,S3_REGION=${GCP_REGION},S3_BUCKET=${BUCKET}"
+CORE_ENV="CERVEL_RUNTIME_MODE=staging,CERVEL_ENVIRONMENT_ID=staging,CERVEL_NODE_AUTHORITY=staging,CERVEL_NODE_NAME=CERVEL Staging,CERVEL_ALLOW_ALPHA_LOGIN=false,CERVEL_TRUST_PRINCIPAL_HEADER=false,CERVEL_STORAGE_MANAGED=true,CERVEL_DEMO_OPENAI_MODEL=${CERVEL_DEMO_OPENAI_MODEL:-gpt-5.6-luna},DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET},S3_ENDPOINT=https://storage.googleapis.com,S3_REGION=${GCP_REGION},S3_BUCKET=${BUCKET}"
 CORE_SECRETS="DB_PASS=cervel-staging-db-password:latest,S3_ACCESS_KEY_ID=cervel-staging-s3-access-key:latest,S3_SECRET_ACCESS_KEY=cervel-staging-s3-secret-key:latest,CERVEL_CONNECTOR_TOKEN_KEY=cervel-staging-connector-token-key:latest,CERVEL_AUTOMATION_KEY=cervel-staging-automation-key:latest"
 
 mark_phase migration-job-deploy
@@ -78,6 +78,11 @@ if secret_exists cervel-staging-oidc-client-id; then
   OIDC_SECRET_ARG="CERVEL_OIDC_CLIENT_ID=cervel-staging-oidc-client-id:latest"
   if secret_exists cervel-staging-oidc-client-secret; then OIDC_SECRET_ARG+=",CERVEL_OIDC_CLIENT_SECRET=cervel-staging-oidc-client-secret:latest"; fi
   gcloud run services update "$SERVICE" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --update-env-vars "CERVEL_OIDC_ISSUER=https://accounts.google.com,CERVEL_OIDC_REDIRECT_URI=${SERVICE_URL}/v1/auth/oidc/callback" --update-secrets "$OIDC_SECRET_ARG" --quiet >/dev/null
+fi
+
+if secret_exists cervel-staging-openai-api-key; then
+  mark_phase api-openai-secret-update
+  gcloud run services update "$SERVICE" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --update-secrets "OPENAI_API_KEY=cervel-staging-openai-api-key:latest" --quiet >/dev/null
 fi
 
 PROVIDER_SECRETS=""

@@ -6,6 +6,7 @@ describe("CERVEL Alpha Demo Experience",()=>{
  test("renders a responsive interactive workspace with isolated assets",()=>{expect(demoPage).toContain("CERVEL — Alpha Workspace");expect(demoPage).toContain('/demo/app.js');expect(demoCss).toContain("@media(max-width:720px)");expect(demoApp).toContain("Synthetic demo");expect(demoApp).toContain("localStorage.removeItem");});
  test("ships syntactically valid standalone browser code",()=>expect(()=>new Function(demoApp)).not.toThrow());
  test("provides functional knowledge workspace interactions",()=>{for(const feature of['data-view="graph"',"Ask CERVEL","Knowledge Graph","Deliverables","Start guided tour","new-note","global-search","note-body"])expect(demoApp).toContain(feature);});
+ test("ships a dense cursor-controlled 3D knowledge graph",()=>{for(const feature of["knowledge-graph","28 nodes","Drag anywhere to orbit","onpointermove","onwheel","requestAnimationFrame(draw)","Pause motion","GRAPH_NODE_FOCUSED"])expect(demoApp).toContain(feature);expect(demoApp.match(/\['[^']+','(?:knowledge|claim|source|person|artifact)'/g)?.length).toBeGreaterThanOrEqual(28);expect(demoCss).toContain("cursor:grab");});
  test("escapes browser-restored state before inserting it into workspace HTML",()=>{expect(demoApp).toContain("var esc=function");expect(demoApp).toContain("esc(e[1])");expect(demoApp).toContain("esc(n.title)");expect(demoApp).toContain("esc(state.answer)");});
  test("rejects unrecognized demo actions",()=>expect(()=>advanceDemo(seedDemo(),{type:"write_real_vault"})).toThrow("DEMO_ACTION_UNKNOWN"));
 });

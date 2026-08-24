@@ -30,14 +30,14 @@ describe("Ask CERVEL OpenAI gateway",()=>{
   const fetchMock=jest.fn(async()=>providerResponse());
   const handler=createDemoAIHandler({apiKey:"key",fetchImpl:fetchMock as unknown as typeof fetch,now:()=>100});
   await expect(handler(request("x".repeat(4001)))).rejects.toMatchObject({message:"DEMO_AI_QUERY_TOO_LONG",statusCode:413});
-  for(let i=0;i<16;i++)await handler(request(`question ${i}`,[],"198.51.100.2"));
+  for(let i=0;i<60;i++)await handler(request(`question ${i}`,[],"198.51.100.2"));
   await expect(handler(request("one more",[],"198.51.100.2"))).rejects.toMatchObject({message:"DEMO_AI_RATE_LIMITED",statusCode:429});
  });
 
  test("isolates browser allowances when visitors share a network",async()=>{
   const fetchMock=jest.fn(async()=>providerResponse());
   const handler=createDemoAIHandler({apiKey:"key",fetchImpl:fetchMock as unknown as typeof fetch,now:()=>100});
-  for(let i=0;i<16;i++)await handler(request(`first visitor ${i}`,[],"198.51.100.8","browser-session-001"));
+  for(let i=0;i<60;i++)await handler(request(`first visitor ${i}`,[],"198.51.100.8","browser-session-001"));
   await expect(handler(request("second visitor",[],"198.51.100.8","browser-session-002"))).resolves.toMatchObject({provider:"openai"});
  });
 

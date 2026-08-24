@@ -10,6 +10,7 @@ describe("CERVEL Life + Enterprise Corpus Demo Experience", () => {
       'data-corpus="enterprise"',
       "CORPUS_VIEW_SWITCHED",
     ]) expect(demoApp).toContain(feature);
+    expect(demoApp.indexOf("VAULT EXPLORER")).toBeLessThan(demoApp.indexOf('class="corpus-switch explorer-switch"'));
   });
 
   test("represents the complete reference taxonomies", () => {
@@ -34,6 +35,36 @@ describe("CERVEL Life + Enterprise Corpus Demo Experience", () => {
       "Authority · role gated",
       "Inferred · target Approved",
     ]) expect(demoApp + demoCss).toContain(feature);
+  });
+
+  test("renders retractable Mega Tabs and subtabs instead of legacy folders", () => {
+    for (const feature of [
+      "lifeTaxonomy",
+      "enterpriseTaxonomy",
+      "data-collapse",
+      "data-subcollapse",
+      "subtab-row",
+      "MEGA TABS · SEMANTIC VIEWS",
+      "Medical Records",
+      "Identity Documents",
+      "Legal / Risk / Compliance",
+      "Retrospectives",
+    ]) expect(demoApp + demoCss).toContain(feature);
+    expect(demoApp).not.toContain("var folders=['Inbox'");
+  });
+
+  test("auto-classifies new and archived knowledge into corpus coordinates", () => {
+    for (const feature of [
+      "classifyContent",
+      "membershipFor",
+      "fileKnowledge",
+      "KNOWLEDGE_AUTO_FILED",
+      "knowledge-composer",
+      "Add & auto-file",
+      "data-archive-result",
+      "Archive + auto-file",
+      "suggested ",
+    ]) expect(demoApp).toContain(feature);
   });
 
   test("demonstrates semantic multi-membership without CKO duplication", () => {

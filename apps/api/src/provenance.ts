@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import { uuidv7 } from "./uuidv7";
 
 export type ProvenanceResource = {
-  resourceType: "cko" | "artifact" | "fragment" | "claim" | "relationship" | "context_package" | "response";
+  resourceType: "cko" | "artifact" | "fragment" | "claim" | "relationship" | "context_package" | "response" | "semantic_kernel";
   resourceId: string;
   sha256?: string | null;
 };

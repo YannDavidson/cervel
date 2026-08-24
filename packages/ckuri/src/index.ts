@@ -1,6 +1,7 @@
 export type ParsedCKURI = {
   authority: string;
   canonicalId?: string;
+  kernelResource?: { kind: string; id: string };
   aliasPath?: string;
   fragment?: { kind: "frag" | "claim" | "convenience"; value: string };
 };
@@ -21,9 +22,13 @@ export function parseCKURI(input: string): ParsedCKURI {
   let canonicalId: string | undefined;
   let aliasPath: string | undefined;
 
+  let kernelResource: ParsedCKURI["kernelResource"];
   if (parts[0] === "cko" && parts[1]) {
     canonicalId = parts[1].toLowerCase();
     if (!UUID_V7.test(canonicalId)) throw new Error("CKURI_CKO_ID_INVALID");
+  } else if(parts[0]==="kernel"&&parts[1]&&parts[2]){
+    if(!/^[a-z][a-z0-9_-]*$/.test(parts[1])||!UUID_V7.test(parts[2]))throw new Error("CKURI_KERNEL_RESOURCE_INVALID");
+    kernelResource={kind:parts[1],id:parts[2].toLowerCase()};
   } else {
     aliasPath = parts.join("/");
     if (!aliasPath) throw new Error("CKURI_PATH_REQUIRED");
@@ -41,7 +46,13 @@ export function parseCKURI(input: string): ParsedCKURI {
     }
   }
 
-  return { authority, canonicalId, aliasPath, fragment };
+  return { authority, canonicalId, kernelResource, aliasPath, fragment };
+}
+
+export function canonicalKernelURI(authority:string,kind:string,id:string):string{
+ const normalized=id.toLowerCase();if(!UUID_V7.test(normalized))throw new Error("CKURI_KERNEL_ID_INVALID");
+ if(!/^[a-z][a-z0-9_-]*$/.test(kind))throw new Error("CKURI_KERNEL_KIND_INVALID");
+ return `cervel://${authority.toLowerCase()}/kernel/${kind}/${normalized}`;
 }
 
 export function canonicalCKURI(authority: string, ckoId: string): string {

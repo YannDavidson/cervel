@@ -46,6 +46,8 @@
     "test:knowledge-compiler": "jest tests/knowledge-compiler",
     "test:deliverables": "jest tests/deliverables",
     "test:external-gateway": "jest tests/external-gateway",
+    "test:semantic-kernel": "jest tests/semantic-kernel",
+    "smoke:semantic-kernel": "tsx scripts/semantic-kernel-smoke.ts",
     "test:demo": "jest tests/demo-experience",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },

@@ -49,9 +49,9 @@ ALTER TABLE life_corpus_receipts ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE VIEW corpus_cko_semantic_view AS
 SELECT cd.node_id, cd.workspace_id, cd.id corpus_id, cd.corpus_key, cd.title corpus_title, cd.visibility,
        cm.mega_tab, cm.tab, cm.subtab, cm.membership_source, cm.confidence, cm.reasons,
-       cm.branch_sensitivity, cm.branch_visibility,
        ko.id cko_id, ko.type cko_type, ko.title cko_title, ko.summary cko_summary,
-       ko.lifecycle_status, ko.object_version, ko.updated_at cko_updated_at
+       ko.lifecycle_status, ko.object_version, ko.updated_at cko_updated_at,
+       cm.branch_sensitivity, cm.branch_visibility
 FROM corpus_memberships cm
 JOIN corpus_definitions cd ON cd.id=cm.corpus_id AND cd.enabled=true
 JOIN knowledge_objects ko ON ko.id=cm.cko_id AND ko.node_id=cd.node_id

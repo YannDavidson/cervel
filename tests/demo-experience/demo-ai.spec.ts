@@ -1,6 +1,6 @@
 import {createDemoAIHandler,demoAIHealth,resetDemoAIRateLimits} from "../../apps/api/src/demo-ai";
 
-const request=(query:string,history:unknown[]=[],ip="203.0.113.9")=>({ip,body:{query,history}}) as any;
+const request=(query:string,history:unknown[]=[],ip="203.0.113.9",clientId="browser-session-001")=>({ip,body:{query,history,client_id:clientId}}) as any;
 const providerResponse=()=>({ok:true,json:async()=>({id:"resp_test_1",model:"gpt-test",output:[{type:"message",content:[{type:"output_text",text:"A concise answer with evidence."}]}]})}) as Response;
 
 describe("Ask CERVEL OpenAI gateway",()=>{
@@ -21,7 +21,8 @@ describe("Ask CERVEL OpenAI gateway",()=>{
   const [url,init]=fetchMock.mock.calls[0] as unknown as [string,RequestInit];
   expect(url).toBe("https://api.openai.com/v1/responses");
   expect(init.headers).toMatchObject({authorization:"Bearer server-secret"});
-  expect(JSON.parse(String(init.body))).toMatchObject({model:"gpt-test",store:false,max_output_tokens:1200});
+  expect(JSON.parse(String(init.body))).toMatchObject({model:"gpt-test",store:false,max_output_tokens:700,reasoning:{effort:"minimal"},text:{verbosity:"low"}});
+  expect(init.signal).toBeInstanceOf(AbortSignal);
   expect(JSON.stringify(result)).not.toContain("server-secret");
  });
 
@@ -29,7 +30,21 @@ describe("Ask CERVEL OpenAI gateway",()=>{
   const fetchMock=jest.fn(async()=>providerResponse());
   const handler=createDemoAIHandler({apiKey:"key",fetchImpl:fetchMock as unknown as typeof fetch,now:()=>100});
   await expect(handler(request("x".repeat(4001)))).rejects.toMatchObject({message:"DEMO_AI_QUERY_TOO_LONG",statusCode:413});
-  for(let i=0;i<12;i++)await handler(request(`question ${i}`,[],"198.51.100.2"));
+  for(let i=0;i<16;i++)await handler(request(`question ${i}`,[],"198.51.100.2"));
   await expect(handler(request("one more",[],"198.51.100.2"))).rejects.toMatchObject({message:"DEMO_AI_RATE_LIMITED",statusCode:429});
+ });
+
+ test("isolates browser allowances when visitors share a network",async()=>{
+  const fetchMock=jest.fn(async()=>providerResponse());
+  const handler=createDemoAIHandler({apiKey:"key",fetchImpl:fetchMock as unknown as typeof fetch,now:()=>100});
+  for(let i=0;i<16;i++)await handler(request(`first visitor ${i}`,[],"198.51.100.8","browser-session-001"));
+  await expect(handler(request("second visitor",[],"198.51.100.8","browser-session-002"))).resolves.toMatchObject({provider:"openai"});
+ });
+
+ test("maps provider throttling and timeouts to actionable public errors",async()=>{
+  const throttled=createDemoAIHandler({apiKey:"key",fetchImpl:jest.fn(async()=>({ok:false,status:429,json:async()=>({error:{message:"slow down"}})} as Response)) as unknown as typeof fetch,now:()=>100});
+  await expect(throttled(request("hello"))).rejects.toMatchObject({message:"DEMO_AI_RATE_LIMITED",statusCode:429});
+  const timeout=createDemoAIHandler({apiKey:"key",timeoutMs:1,fetchImpl:jest.fn(async(_url,init)=>new Promise((_resolve,reject)=>init?.signal?.addEventListener("abort",()=>reject(Object.assign(new Error("timed out"),{name:"TimeoutError"}))))) as unknown as typeof fetch,now:()=>100});
+  await expect(timeout(request("hello",[],"198.51.100.7"))).rejects.toMatchObject({message:"DEMO_AI_TIMEOUT",statusCode:504});
  });
 });

@@ -36,7 +36,7 @@ export function validateCorpusDefinition(definition: CorpusDefinition): CorpusDe
   return definition;
 }
 export function classifyForCorpora(input: ClassificationInput, definitions: readonly CorpusDefinition[] = BUILTIN_CORPORA, threshold = .3): CorpusCandidate[] {
-  const fields: Record<CorpusRule["field"], string> = { type:normalize(input.type), title:normalize(input.title), summary:normalize(input.summary), language:normalize(input.languages), jurisdiction:normalize(input.jurisdictions), tag:normalize(input.tags), topic:normalize(input.topics), vertical:normalize(input.verticals), intent:normalize(input.intents) };
+  const narrative=normalize([input.title??"",input.summary??""]),fields: Record<CorpusRule["field"], string> = { type:normalize(input.type), title:normalize(input.title), summary:normalize(input.summary), language:normalize(input.languages), jurisdiction:normalize(input.jurisdictions), tag:normalize(input.tags), topic:`${normalize(input.topics)} ${narrative}`, vertical:`${normalize(input.verticals)} ${narrative}`, intent:`${normalize(input.intents)} ${narrative}` };
   return definitions.flatMap(def => {
     let score = 0; const reasons: string[] = []; let coordinate: CorpusRule | undefined;
     for (const r of def.rules) { const hits = r.terms.filter(term => fields[r.field].includes(term.toLowerCase())); if (hits.length) { score += Math.min(r.weight, r.weight * hits.length); reasons.push(`${r.field}:${hits.join(",")}`); coordinate ??= r; } }

@@ -24,7 +24,7 @@ SOCKET="/cloudsql/${CONNECTION_NAME}"
 
 mark_phase(){ if [[ -n "${GITHUB_ENV:-}" ]]; then echo "DEPLOY_PHASE=$1" >> "$GITHUB_ENV"; fi; }
 secret_exists(){ gcloud secrets describe "$1" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; }
-CORE_ENV="CERVEL_RUNTIME_MODE=staging,CERVEL_ENVIRONMENT_ID=staging,CERVEL_NODE_AUTHORITY=staging,CERVEL_NODE_NAME=CERVEL Staging,CERVEL_ALLOW_ALPHA_LOGIN=false,CERVEL_TRUST_PRINCIPAL_HEADER=false,CERVEL_STORAGE_MANAGED=true,CERVEL_DEMO_OPENAI_MODEL=${CERVEL_DEMO_OPENAI_MODEL:-gpt-5.6-luna},DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET},S3_ENDPOINT=https://storage.googleapis.com,S3_REGION=${GCP_REGION},S3_BUCKET=${BUCKET}"
+CORE_ENV="CERVEL_RUNTIME_MODE=staging,CERVEL_ENVIRONMENT_ID=staging,CERVEL_NODE_AUTHORITY=staging,CERVEL_NODE_NAME=CERVEL Staging,CERVEL_ALLOW_ALPHA_LOGIN=false,CERVEL_TRUST_PRINCIPAL_HEADER=false,CERVEL_STORAGE_MANAGED=true,CERVEL_DEMO_OPENAI_MODEL=${CERVEL_DEMO_OPENAI_MODEL:-gpt-5-mini},DB_USER=${DB_USER},DB_NAME=${DB_NAME},INSTANCE_UNIX_SOCKET=${SOCKET},S3_ENDPOINT=https://storage.googleapis.com,S3_REGION=${GCP_REGION},S3_BUCKET=${BUCKET}"
 CORE_SECRETS="DB_PASS=cervel-staging-db-password:latest,S3_ACCESS_KEY_ID=cervel-staging-s3-access-key:latest,S3_SECRET_ACCESS_KEY=cervel-staging-s3-secret-key:latest,CERVEL_CONNECTOR_TOKEN_KEY=cervel-staging-connector-token-key:latest,CERVEL_AUTOMATION_KEY=cervel-staging-automation-key:latest"
 
 mark_phase migration-job-deploy

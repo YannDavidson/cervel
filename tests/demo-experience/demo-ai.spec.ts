@@ -10,6 +10,7 @@ describe("Ask CERVEL OpenAI gateway",()=>{
   const handler=createDemoAIHandler({apiKey:""});
   await expect(handler(request("Hello"))).rejects.toMatchObject({message:"DEMO_AI_NOT_CONFIGURED",statusCode:503});
   expect(demoAIHealth({apiKey:""})).toMatchObject({configured:false,provider:"openai"});
+  expect(demoAIHealth({apiKey:"configured"}).model).toBe("gpt-5-mini");
  });
 
  test("uses the Responses API without provider storage and returns an archive suggestion",async()=>{

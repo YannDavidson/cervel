@@ -23,7 +23,7 @@ function checkRateLimit(key:string,now:number){const current=buckets.get(key);if
 function validTurns(value:unknown):Turn[]{if(!Array.isArray(value))return[];return value.slice(-MAX_HISTORY_TURNS).filter((x):x is Turn=>Boolean(x&&typeof x==="object"&&((x as Turn).role==="user"||(x as Turn).role==="assistant")&&typeof(x as Turn).content==="string")).map(x=>({role:x.role,content:x.content.slice(0,MAX_QUERY)}));}
 
 export function createDemoAIHandler(runtime:Partial<Runtime>={}){
- const apiKey=runtime.apiKey??process.env.OPENAI_API_KEY,model=runtime.model??process.env.CERVEL_DEMO_OPENAI_MODEL??"gpt-5.6-luna",fetchImpl=runtime.fetchImpl??fetch,now=runtime.now??Date.now;
+ const apiKey=runtime.apiKey??process.env.OPENAI_API_KEY,model=runtime.model??process.env.CERVEL_DEMO_OPENAI_MODEL??"gpt-5-mini",fetchImpl=runtime.fetchImpl??fetch,now=runtime.now??Date.now;
  return async(request:FastifyRequest)=>{
   if(!apiKey)throw Object.assign(new Error("DEMO_AI_NOT_CONFIGURED"),{statusCode:503});
   checkRateLimit(request.ip,now());
@@ -39,6 +39,6 @@ export function createDemoAIHandler(runtime:Partial<Runtime>={}){
   return{answer,provider:"openai",model:payload.model??model,response_id:responseId,archive_suggestion:{vertical,title:titleFor(query),tags:["ask-cervel","openai",vertical.toLowerCase().replace(/[^a-z0-9]+/g,"-")]},disclosure_receipt:{external:true,provider:"openai",stored_by_provider:false,history_turns:history.length,input_characters:query.length,latency_ms:Math.max(0,now()-started)}};
  };
 }
-export function demoAIHealth(runtime:Pick<Partial<Runtime>,"apiKey"|"model">={}){return{configured:Boolean(runtime.apiKey??process.env.OPENAI_API_KEY),provider:"openai",model:runtime.model??process.env.CERVEL_DEMO_OPENAI_MODEL??"gpt-5.6-luna"};}
+export function demoAIHealth(runtime:Pick<Partial<Runtime>,"apiKey"|"model">={}){return{configured:Boolean(runtime.apiKey??process.env.OPENAI_API_KEY),provider:"openai",model:runtime.model??process.env.CERVEL_DEMO_OPENAI_MODEL??"gpt-5-mini"};}
 export function registerDemoAIRoutes(app:FastifyInstance){app.get("/v1/demo/ai/health",async()=>demoAIHealth());app.post("/v1/demo/ask",createDemoAIHandler());}
 export function resetDemoAIRateLimits(){buckets.clear();}

@@ -26,6 +26,7 @@ import { registerKnowledgeCompilerRoutes } from "./knowledge-compiler-routes";
 import { registerExternalGatewayRoutes } from "./external-gateway-routes";
 import { registerDemoRoutes } from "./demo-routes";
 import { registerDemoAIRoutes } from "./demo-ai";
+import { registerSemanticKernelRoutes } from "./semantic-kernel-routes";
 
 assertProductionConfiguration();
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
@@ -45,6 +46,7 @@ registerKnowledgeCompilerRoutes(app);
 registerExternalGatewayRoutes(app);
 registerDemoRoutes(app);
 registerDemoAIRoutes(app);
+registerSemanticKernelRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerLocalNodeRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerCaptureRoutes(app);
 if(process.env.CERVEL_RUNTIME_MODE==="local")registerMobileRoutes(app);

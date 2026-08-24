@@ -1,0 +1,30 @@
+name: CERVEL Semantic Kernel Integration
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  semantic-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      CERVEL_NODE_AUTHORITY: semantic-kernel-ci
+      CERVEL_NODE_NAME: Semantic Kernel CI
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: kernel-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm run test:semantic-kernel -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap | jq -e '.event == "cervel_bootstrap"' >/dev/null
+      - run: npm run --silent smoke:semantic-kernel | jq -e '.ok == true and .kernel_version == "1.0" and .versions == 2' >/dev/null

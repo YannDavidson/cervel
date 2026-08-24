@@ -1,0 +1,21 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://schemas.cervel.ai/semantic-kernel/1.0/schema.json",
+  "title":"CERVEL Semantic Kernel Record v1.0",
+  "type":"object","additionalProperties":false,
+  "required":["kernel_version","id","node_id","workspace_id","kind","canonical_uri","lifecycle","sensitivity","authority","confidence","payload","observed_at","effective_from","effective_until","supersedes_id","policy_id","provenance_event_id","created_by","created_at","updated_at"],
+  "properties":{
+    "kernel_version":{"const":"1.0"},
+    "id":{"$ref":"#/$defs/uuidv7"},"node_id":{"$ref":"#/$defs/uuidv7"},"workspace_id":{"$ref":"#/$defs/uuidv7"},
+    "kind":{"enum":["cko","entity","claim","relationship","event","state","memory","provenance","authority","permission"]},
+    "canonical_uri":{"type":"string","pattern":"^cervel://[a-z0-9.-]+/kernel/(cko|entity|claim|relationship|event|state|memory|provenance|authority|permission)/[0-9a-f-]{36}$"},
+    "lifecycle":{"enum":["active","archived","superseded","tombstoned"]},
+    "sensitivity":{"enum":["public","internal","confidential","restricted","sealed"]},
+    "authority":{"enum":["observed","reported","inferred","verified","approved","official","disputed","superseded","hypothetical"]},
+    "confidence":{"type":["number","null"],"minimum":0,"maximum":1},"payload":{"type":"object"},
+    "observed_at":{"type":"string","format":"date-time"},"effective_from":{"$ref":"#/$defs/dateOrNull"},"effective_until":{"$ref":"#/$defs/dateOrNull"},
+    "supersedes_id":{"$ref":"#/$defs/uuidOrNull"},"policy_id":{"$ref":"#/$defs/uuidOrNull"},"provenance_event_id":{"$ref":"#/$defs/uuidOrNull"},"created_by":{"$ref":"#/$defs/uuidOrNull"},
+    "created_at":{"type":"string","format":"date-time"},"updated_at":{"type":"string","format":"date-time"}
+  },
+  "$defs":{"uuidv7":{"type":"string","format":"uuid","pattern":"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},"uuidOrNull":{"oneOf":[{"type":"string","format":"uuid"},{"type":"null"}]},"dateOrNull":{"oneOf":[{"type":"string","format":"date-time"},{"type":"null"}]}}
+}

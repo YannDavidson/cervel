@@ -52,6 +52,8 @@
     "smoke:corpus-engine": "tsx scripts/corpus-engine-smoke.ts",
     "test:life-corpus": "jest tests/life-corpus",
     "smoke:life-corpus": "tsx scripts/life-corpus-smoke.ts",
+    "test:enterprise-corpus": "jest tests/enterprise-corpus",
+    "smoke:enterprise-corpus": "tsx scripts/enterprise-corpus-smoke.ts",
     "test:demo": "jest tests/demo-experience",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },

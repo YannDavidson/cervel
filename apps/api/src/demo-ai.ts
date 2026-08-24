@@ -4,7 +4,7 @@ type Turn={role:"user"|"assistant";content:string};
 type OpenAIResponse={id?:string;model?:string;output?:Array<{type?:string;content?:Array<{type?:string;text?:string}>}>;error?:{message?:string}};
 type Runtime={apiKey?:string;model:string;fetchImpl:typeof fetch;now:()=>number;timeoutMs:number};
 
-const WINDOW_MS=10*60*1000,MAX_SESSION_REQUESTS=16,MAX_NETWORK_REQUESTS=240,MAX_QUERY=4000,MAX_HISTORY_TURNS=8,PROVIDER_TIMEOUT_MS=20_000;
+const WINDOW_MS=10*60*1000,MAX_SESSION_REQUESTS=60,MAX_NETWORK_REQUESTS=600,MAX_QUERY=4000,MAX_HISTORY_TURNS=8,PROVIDER_TIMEOUT_MS=20_000;
 const buckets=new Map<string,{count:number;resetAt:number}>();
 
 function verticalFor(text:string){

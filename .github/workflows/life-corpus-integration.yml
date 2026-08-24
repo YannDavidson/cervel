@@ -1,0 +1,30 @@
+name: CERVEL Life Corpus Integration
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  life-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: cervel, POSTGRES_PASSWORD: cervel, POSTGRES_DB: cervel }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cervel -d cervel" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cervel:cervel@localhost:5432/cervel
+      CERVEL_NODE_AUTHORITY: life-corpus-ci
+      CERVEL_NODE_NAME: Life Corpus CI
+      CERVEL_BOOTSTRAP_ADMIN_SUBJECT: life-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm run test:life-corpus -- --runInBand
+      - run: npm run db:migrate
+      - run: npm run --silent db:bootstrap | jq -e '.event == "cervel_bootstrap"' >/dev/null
+      - run: npm run --silent smoke:life-corpus | jq -e '.ok == true and .runtime_version == "1.0" and .branches == 17 and .sealed_hidden_before == true and .sealed_visible_after == true' >/dev/null

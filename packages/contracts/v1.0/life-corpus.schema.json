@@ -1,0 +1,17 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://schemas.cervel.ai/life-corpus/1.0/schema.json",
+  "title":"CERVEL Life Corpus Membership v1.0",
+  "type":"object","additionalProperties":false,
+  "required":["runtime_version","cko_id","mega_tab","tab","subtab","sensitivity","visibility","confidence","reasons"],
+  "properties":{
+    "runtime_version":{"const":"1.0"},
+    "cko_id":{"type":"string","format":"uuid"},
+    "mega_tab":{"enum":["personal","relationships-family","health","work-career","education","projects","finance","home","memory","personal-knowledge","digital-life","travel","hobbies","goals","civic-community","legal-administrative","legacy"]},
+    "tab":{"type":"string","minLength":1},"subtab":{"type":["string","null"]},
+    "sensitivity":{"enum":["internal","confidential","restricted","sealed"]},
+    "visibility":{"enum":["private","sealed"]},
+    "confidence":{"type":"number","minimum":0,"maximum":1},
+    "reasons":{"type":"array","items":{"type":"string"}}
+  }
+}

@@ -64,7 +64,7 @@ WORKSPACE_ID="$(gcloud logging read "$BOOT_FILTER" --project "$GCP_PROJECT_ID" -
 test -n "$NODE_ID" && test -n "$WORKSPACE_ID"
 
 mark_phase api-service-deploy
-gcloud run deploy "$SERVICE" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --image "$IMAGE_URI" --service-account "$RUNTIME_SA" --set-cloudsql-instances "$CONNECTION_NAME" --allow-unauthenticated --execution-environment gen2 --cpu 1 --memory 1Gi --concurrency 40 --min-instances 0 --max-instances 4 --timeout 300 --set-env-vars "${CORE_ENV},CERVEL_PUBLIC_BASE_URL=https://staging.invalid,CERVEL_AUTH_NODE_ID=${NODE_ID},CERVEL_AUTH_WORKSPACE_ID=${WORKSPACE_ID}" --set-secrets "$CORE_SECRETS" --quiet >/dev/null
+gcloud run deploy "$SERVICE" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --image "$IMAGE_URI" --service-account "$RUNTIME_SA" --set-cloudsql-instances "$CONNECTION_NAME" --allow-unauthenticated --execution-environment gen2 --cpu 1 --memory 1Gi --concurrency 40 --min-instances 1 --max-instances 4 --timeout 300 --set-env-vars "${CORE_ENV},CERVEL_PUBLIC_BASE_URL=https://staging.invalid,CERVEL_AUTH_NODE_ID=${NODE_ID},CERVEL_AUTH_WORKSPACE_ID=${WORKSPACE_ID}" --set-secrets "$CORE_SECRETS" --quiet >/dev/null
 mark_phase api-url-resolve
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format='value(status.url)')"
 test -n "$SERVICE_URL"

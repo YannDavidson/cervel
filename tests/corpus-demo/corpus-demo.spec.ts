@@ -81,12 +81,12 @@ describe("CERVEL Life + Enterprise Corpus Demo Experience", () => {
 
   test("ships a guided investor path and responsive polished surfaces", () => {
     for (const feature of [
-      "Investor path",
+      "investor path",
       "investor-tour",
       "INVESTOR_DEMO_STARTED",
-      "Meet the two corpora",
-      "Verify policy and provenance",
-      "Explore across corpora",
+      "Open the user-owned Vault",
+      "Verify the complete Trace",
+      "Explore shared knowledge",
     ]) expect(demoApp).toContain(feature);
     expect(demoCss).toContain(".onboarding-card");
     expect(demoCss).toContain("backdrop-filter:blur(18px)");

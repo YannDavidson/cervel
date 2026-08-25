@@ -2,16 +2,16 @@ const replaceRequired=(source:string,anchor:string,replacement:string,label:stri
   if(!source.includes(anchor))throw new Error(`DEMO_NOTE_CAPTURE_PATCH_MISSING:${label}`);
   return source.replace(anchor,replacement);
 };
+const replaceRegexRequired=(source:string,pattern:RegExp,replacement:string,label:string)=>{
+  if(!pattern.test(source))throw new Error(`DEMO_NOTE_CAPTURE_PATCH_MISSING:${label}`);
+  pattern.lastIndex=0;
+  return source.replace(pattern,replacement);
+};
 
 export function patchDemoNoteCapture(source:string):string{
   let out=source;
 
-  out=replaceRequired(
-    out,
-    "compiledReceipt:null,composer:false,filingReceipt:''",
-    "compiledReceipt:null,composer:false,composerDraft:{title:'',body:''},composerTarget:null,filingReceipt:''",
-    "composer-state"
-  );
+  out=replaceRequired(out,"compiledReceipt:null,composer:false,filingReceipt:''","compiledReceipt:null,composer:false,composerDraft:{title:'',body:''},composerTarget:null,filingReceipt:''","composer-state");
 
   out=replaceRequired(
     out,
@@ -27,9 +27,9 @@ export function patchDemoNoteCapture(source:string):string{
     "composer-draft-bindings"
   );
 
-  out=replaceRequired(
+  out=replaceRegexRequired(
     out,
-    "if(a==='new-note'){var id='note-'+Date.now();notes.push({id:id,title:'Untitled note',folder:'Projects',tags:['new'],body:'# Untitled note\\\n\\\nStart writing…',source:'Created in demo Vault'});openNote(id)}",
+    /if\(a==='new-note'\)\{var id='note-'\+Date\.now\(\);notes\.push\(\{id:id,title:'Untitled note',folder:'Projects',tags:\['new'\],body:'# Untitled note[\s\S]*?source:'Created in demo Vault'\}\);openNote\(id\)\}/,
     "if(a==='new-note'){openComposer(null);return}",
     "remove-competing-new-note-handler"
   );
@@ -48,12 +48,7 @@ export function patchDemoNoteCapture(source:string):string{
     "direct-subtab-submit"
   );
 
-  out=replaceRequired(
-    out,
-    "bind();applyPreferences();if(state.view==='graph')requestAnimationFrame(initGraph);",
-    "bind();enhanceSubtabActions();applyPreferences();if(state.view==='graph')requestAnimationFrame(initGraph);",
-    "enhance-subtabs-after-render"
-  );
+  out=replaceRequired(out,"bind();applyPreferences();if(state.view==='graph')requestAnimationFrame(initGraph);","bind();enhanceSubtabActions();applyPreferences();if(state.view==='graph')requestAnimationFrame(initGraph);","enhance-subtabs-after-render");
 
   out=replaceRequired(
     out,

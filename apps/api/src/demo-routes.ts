@@ -8,6 +8,7 @@ const demoAppV52=patchDemoNoteCapture(demoApp);
 const demoCssV52=`${demoCss}\n${demoNoteCaptureCss}`;
 const demoPageV52=demoPage.replaceAll("v=51","v=52");
 export function registerDemoRoutes(app:FastifyInstance){
+ if(process.env.CERVEL_RUNTIME_MODE==="staging")app.get("/",async(_r,reply)=>reply.header("cache-control","no-store").redirect("/demo",302));
  app.get("/demo",async(_r,reply)=>reply.type("text/html; charset=utf-8").header("cache-control","no-store").header("content-security-policy","default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'").send(demoPageV52));
  app.get("/demo/app.css",async(_r,reply)=>reply.type("text/css; charset=utf-8").header("cache-control","no-cache, must-revalidate").send(demoCssV52));
  app.get("/demo/app.js",async(_r,reply)=>reply.type("application/javascript; charset=utf-8").header("cache-control","no-cache, must-revalidate").send(demoAppV52));

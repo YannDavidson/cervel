@@ -56,6 +56,7 @@
     "smoke:enterprise-corpus": "tsx scripts/enterprise-corpus-smoke.ts",
     "test:corpus-demo": "jest tests/corpus-demo",
     "test:demo": "jest tests/demo-experience",
+    "test:embodiment": "jest tests/embodiment-foundation",
     "alpha:golden-path": "tsx scripts/alpha-golden-path.ts"
   },
   "dependencies": {

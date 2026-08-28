@@ -4,7 +4,6 @@
   "version": "0.2.1",
   "description": "Capture pages, selections, links, PDFs, and notes into your paired CERVEL Vault.",
   "minimum_chrome_version": "121",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxj7qJQLNCUXiJLPEqbfNiY2Z/aFw8xeVP8E0NH67hhDONzIK1b99CbMP2NaRkrLGJmGN72MkFAaOEDJH1oL1aKnJwu8iHO2jkbW6cx/S4Euq9o+CFCSZ94AiJPVv312kLJoHh5tqWuiuwrPIm+038XQwYhr0Yk0CEGaYZSbjqmftpYJNx7o3Wr1SHRxEUF0yipayWSS1xd7UWY+qN5hy3KoSggk/0kEoCeJEIdUbNZqXEy7FawcHoWlSWRgVterFPONQYw4zKIzTTVPW9akUEqEKrgLe8DkICGF3gWCFrlP945cXZLTxvQ1LomTqFkwuLEyMEX5dqsqqbtQ6GVkF3wIDAQAB",
   "permissions": ["activeTab", "alarms", "contextMenus", "storage", "nativeMessaging", "scripting"],
   "host_permissions": [],
   "background": { "service_worker": "background.js", "type": "module" },

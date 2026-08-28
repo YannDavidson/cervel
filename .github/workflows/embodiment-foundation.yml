@@ -1,0 +1,35 @@
+name: CERVEL Embodiment Foundation Integration
+
+on:
+  pull_request:
+    paths:
+      - "packages/embodiment/**"
+      - "tests/embodiment-foundation/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/workflows/embodiment-foundation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/embodiment/**"
+      - "tests/embodiment-foundation/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/workflows/embodiment-foundation.yml"
+
+jobs:
+  embodiment-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:embodiment -- --runInBand
+      - run: npm run test:capture-extension -- --runInBand
+      - run: npm run test:cloud-sync -- --runInBand
+      - run: npm run test:desktop -- --runInBand
+      - run: npm run test:mobile-capture -- --runInBand

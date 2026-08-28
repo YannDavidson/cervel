@@ -8,6 +8,22 @@ Chrome and Microsoft Edge are the first-class Manifest V3 targets. The alpha sup
 
 Every browser installation receives a persistent `embodiment_id` and `device_id`. Pairing happens through the `ai.cervel.capture` native-messaging bridge. The bridge validates the browser embodiment identity, verifies the loopback CERVEL Node is ready, and returns the active Vault/node/workspace context. The Local Node credential never enters browser JavaScript.
 
+## Developer installation
+
+Prerequisites: Node.js 22+, Docker, Chrome 121+ or Edge 121+, and `CERVEL_VAULT_PASSPHRASE` set to a 12+ character local development passphrase.
+
+```bash
+export CERVEL_VAULT_PASSPHRASE='your-local-development-passphrase'
+npm install
+npm run cervel:extension:dev -- --browser chrome
+```
+
+Use `--browser edge` for Edge or `--browser both` to register the native host for both browsers. `--vault /absolute/path` selects a non-default Vault. The command builds CERVEL and the extension, initializes the default Vault when needed, starts the Local Node, provisions the owner-only native-host config, installs/registers `ai.cervel.capture`, and prints the unpacked extension directory.
+
+Then open `chrome://extensions` or `edge://extensions`, enable Developer mode, choose **Load unpacked**, and select the printed extension directory. The development manifest carries a fixed public key, giving Chrome and Edge the stable development extension ID `ljaccdmbcojoogpmgkmglchlnhogiomf`; the native host is restricted to that origin.
+
+The installer writes native-host registration only into the current user's profile. On macOS/Linux it creates an executable launcher and browser NativeMessagingHosts manifest. On Windows it creates the developer launcher/manifest and user-level Chrome/Edge registry entries. It does not request administrator privileges, publish the extension, or expose the Local Node token to browser JavaScript.
+
 ## Capture lifecycle
 
 1. The extension extracts page metadata, readable page text, selected text with surrounding context, a link, or PDF source metadata.
@@ -23,7 +39,7 @@ Every browser installation receives a persistent `embodiment_id` and `device_id`
 
 Browser evidence continues to use `cervel-capture/v0.1` for compatibility with the existing Local Node ingestion route while the shared Embodiment Foundation owns browser identity, device identity, capabilities, pairing semantics, and future IPC evolution. DOM-derived content is always tagged `untrusted_web_content` with `instruction_policy: never_execute`.
 
-Page content cannot choose node, workspace, principal, storage location, permissions, or Local Node credentials. The native host supplies those from the owner-only Desktop configuration. Suspicious page instructions can be preserved as evidence but are never treated as CERVEL instructions.
+Page content cannot choose node, workspace, principal, storage location, permissions, or Local Node credentials. The native host supplies those from owner-only local configuration. Suspicious page instructions can be preserved as evidence but are never treated as CERVEL instructions.
 
 ## Permissions and privacy
 
@@ -36,10 +52,4 @@ Page content cannot choose node, workspace, principal, storage location, permiss
 
 ## Packaging
 
-Run `npm run build:capture-extension` to emit:
-
-- `dist/extensions/chromium` — Chrome/Chromium MV3 alpha.
-- `dist/extensions/edge` — Microsoft Edge MV3 alpha.
-- `dist/extensions/firefox` — compatibility artifact retained for later rollout.
-
-Chrome and Edge share the same security and capture contracts. Store signing and native-host installer registration remain distribution operations outside the extension runtime.
+Run `npm run build:capture-extension` to emit `dist/extensions/chromium`, `dist/extensions/edge`, and the retained Firefox compatibility artifact. Chrome and Edge share the same security, capture, and stable developer identity contracts. Store signing remains a later distribution operation.

@@ -10,7 +10,8 @@ import {
   isAllowed,
   validateAdvertisement,
   validateCapture,
-  validateEmbodiment
+  validateEmbodiment,
+  type EnrollmentRequest
 } from "../../packages/embodiment/src/public";
 
 describe("CERVEL embodiment foundation",()=>{
@@ -67,7 +68,24 @@ describe("CERVEL embodiment foundation",()=>{
   test("registry rejects permission escalation during enrollment",()=>{
     const registry=new EmbodimentRegistry();
     const embodiment_id=createEmbodimentId("desktop-a"),device_id=createDeviceId("desktop-device");
-    const request={protocol:EMBODIMENT_PROTOCOL,request_id:"req-enroll-1",embodiment:{protocol:EMBODIMENT_PROTOCOL,embodiment_id,device_id,kind:"desktop" as const,display_name:"Desktop",capabilities:["vault.read","vault.write"] as const,signing_public_key:"sig",encryption_public_key:"enc"},requested_permissions:[{capability:"vault.read" as const,effect:"allow" as const,scope:{vault_id:"vault-a"}}],pairing_nonce:"nonce",issued_at:new Date(Date.now()-1000).toISOString(),expires_at:new Date(Date.now()+60000).toISOString()};
+    const request:EnrollmentRequest={
+      protocol:EMBODIMENT_PROTOCOL,
+      request_id:"req-enroll-1",
+      embodiment:{
+        protocol:EMBODIMENT_PROTOCOL,
+        embodiment_id,
+        device_id,
+        kind:"desktop",
+        display_name:"Desktop",
+        capabilities:["vault.read","vault.write"],
+        signing_public_key:"sig",
+        encryption_public_key:"enc"
+      },
+      requested_permissions:[{capability:"vault.read",effect:"allow",scope:{vault_id:"vault-a"}}],
+      pairing_nonce:"nonce",
+      issued_at:new Date(Date.now()-1000).toISOString(),
+      expires_at:new Date(Date.now()+60000).toISOString()
+    };
     expect(()=>registry.enroll(request,{protocol:EMBODIMENT_PROTOCOL,request_id:"req-enroll-1",embodiment_id,device_id,approved:true,permissions:[{capability:"vault.write",effect:"allow",scope:{vault_id:"vault-a"}}],decided_at:new Date().toISOString(),authorizer_id:"owner"})).toThrow("ENROLLMENT_PERMISSION_ESCALATION");
   });
 });

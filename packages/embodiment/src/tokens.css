@@ -1,0 +1,25 @@
+:root{
+  --cervel-ink:#071A35;
+  --cervel-blue:#087BC1;
+  --cervel-cyan:#13C9CF;
+  --cervel-violet:#7B2BE2;
+  --cervel-gradient-mid:#11BDC8;
+  --cervel-background:#FFFFFF;
+  --cervel-surface-soft:#F5F7FA;
+  --cervel-surface-product:#F6F8FB;
+  --cervel-text-secondary:#68778A;
+  --cervel-text-tertiary:#8794A5;
+  --cervel-border-subtle:rgba(7,26,53,.09);
+  --cervel-border-faint:rgba(7,26,53,.05);
+  --cervel-surface-dark:#06172F;
+  --cervel-surface-world:#030D1C;
+  --cervel-radius-sm:10px;
+  --cervel-radius-md:18px;
+  --cervel-radius-lg:26px;
+  --cervel-radius-pill:999px;
+  --cervel-motion-fast:180ms;
+  --cervel-motion-standard:240ms;
+  --cervel-motion-large:550ms;
+  --cervel-ease:cubic-bezier(.22,.61,.36,1);
+  --cervel-gradient:linear-gradient(90deg,#087BC1 5%,#11BDC8 55%,#7B2BE2 96%);
+}

@@ -22,6 +22,7 @@
     "start:sync-relay": "node dist/apps/sync-relay/src/server.js",
     "start:mcp": "node dist/apps/mcp-server/src/server.js",
     "build:capture-extension": "tsx scripts/build-capture-extension.ts",
+    "cervel:extension:dev": "tsx scripts/browser-alpha-dev-installer.ts",
     "start:capture-host": "node dist/apps/capture-native-host/src/host.js",
     "sync:sources": "tsx workers/source-sync.ts",
     "db:migrate": "tsx scripts/db/migrate.ts",

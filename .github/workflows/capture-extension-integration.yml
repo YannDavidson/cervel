@@ -2,7 +2,7 @@ name: CERVEL Capture Extension Integration
 on:
   pull_request:
     branches: [main]
-    paths: ['apps/capture-extension/**','apps/capture-native-host/**','apps/api/src/capture-routes.ts','apps/api/src/server.ts','apps/desktop/src/node-client.ts','packages/capture-extension/**','packages/embodiment/**','db/migrations/025_capture_extension.sql','scripts/build-capture-extension.ts','tests/capture-extension/**','docs/CAPTURE_EXTENSION.md','package*.json','.github/workflows/capture-extension-integration.yml']
+    paths: ['apps/capture-extension/**','apps/capture-native-host/**','apps/api/src/capture-routes.ts','apps/api/src/server.ts','apps/desktop/src/node-client.ts','packages/capture-extension/**','packages/embodiment/**','db/migrations/025_capture_extension.sql','scripts/build-capture-extension.ts','scripts/browser-alpha-dev-installer.ts','tests/capture-extension/**','docs/CAPTURE_EXTENSION.md','package*.json','.github/workflows/capture-extension-integration.yml']
 jobs:
   capture-contract:
     runs-on: ubuntu-latest
@@ -23,9 +23,10 @@ jobs:
           test -f dist/extensions/chromium/manifest.json
           test -f dist/extensions/edge/manifest.json
           test -f dist/extensions/firefox/manifest.json
-          jq -e '.manifest_version == 3 and .version == "0.2.0" and (.host_permissions | length == 0)' dist/extensions/chromium/manifest.json
-          jq -e '.manifest_version == 3 and .version == "0.2.0" and (.host_permissions | length == 0)' dist/extensions/edge/manifest.json
+          jq -e '.manifest_version == 3 and .version == "0.2.1" and .key and (.host_permissions | length == 0)' dist/extensions/chromium/manifest.json
+          jq -e '.manifest_version == 3 and .version == "0.2.1" and .key and (.host_permissions | length == 0)' dist/extensions/edge/manifest.json
           jq -e '.browser_specific_settings.gecko.id == "capture@cervel.ai"' dist/extensions/firefox/manifest.json
+          grep -q 'chrome-extension://ljaccdmbcojoogpmgkmglchlnhogiomf/' apps/capture-native-host/manifests/chromium.json
       - name: Start real Local Node
         run: |
           npm run --silent cervel -- init --vault "$VAULT" --name 'Capture CI Vault' --authority capture-ci

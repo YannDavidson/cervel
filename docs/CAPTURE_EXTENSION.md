@@ -1,30 +1,45 @@
-# CERVEL Capture Extension
+# CERVEL Browser Extension Alpha
 
-CERVEL Capture is a high-frequency acquisition client for the Local Node. It captures evidence plus provenance; it does not flatten a webpage into an ordinary note and it is never a knowledge runtime.
+CERVEL Capture is the browser embodiment of CERVEL Persistent Knowledge Infrastructure. The Chrome/Edge alpha captures web context into the user-owned Vault, preserves provenance, automatically classifies the resulting CKO into CERVEL Corpora, and returns related Vault knowledge without turning the browser extension itself into a knowledge runtime.
 
-## Evidence contract
+## Alpha scope
 
-Every capture records the capture type, canonical and observed URL, origin, title, author, published time when available, capture time, browser acquisition context, user note, tags, capture intent, project reference, content hash, and a stable duplicate fingerprint. Page, selection, visible image, link, and PDF-source captures share `cervel-capture/v0.1`. The portable artifact uses `cervel-browser-evidence/v0.1` JSON, with binary screenshots stored as a separate original artifact.
+Chrome and Microsoft Edge are the first-class Manifest V3 targets. The alpha supports page capture, selected-text capture, link capture, PDF metadata capture, and user notes. Captures can be created while the CERVEL Node is unavailable; a bounded browser-local queue retries them after pairing or reconnection.
 
-The Local Node canonicalizes URLs, removes common tracking parameters, verifies that a page cannot nominate a canonical URL on another origin, caps input sizes, normalizes control characters, checks node/workspace scope, detects duplicates, creates a `web_evidence` CKO, stores artifacts, and emits a `browser_evidence_captured` provenance event.
+Every browser installation receives a persistent `embodiment_id` and `device_id`. Pairing happens through the `ai.cervel.capture` native-messaging bridge. The bridge validates the browser embodiment identity, verifies the loopback CERVEL Node is ready, and returns the active Vault/node/workspace context. The Local Node credential never enters browser JavaScript.
 
-## Prompt-injection boundary
+## Capture lifecycle
 
-All DOM-derived fields are labeled `untrusted_web_content` with `instruction_policy: never_execute`. Suspicious instructions are preserved because they may themselves be evidence, but they are never used as routing, permissions, tool, Vault, project, or model instructions. The native host adds node, workspace, principal, and storage scope from its owner-only Desktop configuration; page content cannot supply those fields.
+1. The extension extracts page metadata, readable page text, selected text with surrounding context, a link, or PDF source metadata.
+2. The user can attach a note, tags, capture intent, and project reference.
+3. The capture is stored in the browser offline queue first.
+4. When paired, the native host forwards the evidence to `/v1/local/captures` over loopback.
+5. The Local Node validates and canonicalizes the evidence, detects duplicates, creates the `web_evidence` CKO, stores the source artifact, ingests/embeds text, and emits provenance.
+6. The Corpus Engine runs `capture.ingested` automatic classification when Corpora are registered.
+7. The response includes the classification receipt plus up to five related Vault objects sharing the same semantic corpus branch.
+8. The popup surfaces where CERVEL filed the capture and the related knowledge already present in the Vault.
+
+## Evidence and safety boundary
+
+Browser evidence continues to use `cervel-capture/v0.1` for compatibility with the existing Local Node ingestion route while the shared Embodiment Foundation owns browser identity, device identity, capabilities, pairing semantics, and future IPC evolution. DOM-derived content is always tagged `untrusted_web_content` with `instruction_policy: never_execute`.
+
+Page content cannot choose node, workspace, principal, storage location, permissions, or Local Node credentials. The native host supplies those from the owner-only Desktop configuration. Suspicious page instructions can be preserved as evidence but are never treated as CERVEL instructions.
 
 ## Permissions and privacy
 
-- `activeTab` and `scripting` allow an explicit capture of the current page.
-- `contextMenus` provides page, selection, image, and link acquisition.
-- `storage` holds user preferences and a bounded offline retry queue.
-- `alarms` retries queued captures with bounded exponential backoff.
-- `nativeMessaging` reaches the Local Node through `ai.cervel.capture`.
-- No persistent website host permission or cloud endpoint is requested.
+- `activeTab` and `scripting` support explicit capture of the active page.
+- `contextMenus` exposes Add page, Add selection, and Add link actions.
+- `storage` holds preferences, embodiment/device identifiers, pairing metadata, and the bounded offline queue.
+- `alarms` retries queued captures using bounded exponential backoff.
+- `nativeMessaging` reaches the CERVEL Node through the local bridge.
+- No persistent website `host_permissions` or cloud endpoint is requested.
 
-The Desktop writes an owner-only, short-lived native-host configuration when a Vault opens and removes it when the Vault locks. The extension never receives the Local Node token. If the Node or host is unavailable, captures remain in browser-local storage with status and manual retry controls.
+## Packaging
 
-## Browser rollout
+Run `npm run build:capture-extension` to emit:
 
-Run `npm run build:capture-extension` to generate Chromium and Firefox packages from the same source. Chromium is the primary Manifest V3 target. Firefox adds the stable extension ID `capture@cervel.ai`. On macOS, use the emitted `xcrun safari-web-extension-converter` command to create the signed Safari Web Extension Xcode project. Browser-specific native-host manifests live in `apps/capture-native-host/manifests`; production installers replace the explicit host path and extension ID placeholders during signed packaging.
+- `dist/extensions/chromium` — Chrome/Chromium MV3 alpha.
+- `dist/extensions/edge` — Microsoft Edge MV3 alpha.
+- `dist/extensions/firefox` — compatibility artifact retained for later rollout.
 
-Chrome/Chromium loads `dist/extensions/chromium` as an unpacked extension for development. Firefox loads `dist/extensions/firefox/manifest.json` temporarily. Safari signing and store distribution remain platform signing operations; the capture protocol and security boundary are identical.
+Chrome and Edge share the same security and capture contracts. Store signing and native-host installer registration remain distribution operations outside the extension runtime.

@@ -10,6 +10,8 @@ Every browser installation receives a persistent `embodiment_id` and `device_id`
 
 ## Developer installation
 
+The one-command native-host developer installer currently supports macOS and Linux. Windows support is intentionally deferred until the Desktop packaging path provides a real executable native host wrapper.
+
 Prerequisites: Node.js 22+, Docker, Chrome 121+ or Edge 121+, and `CERVEL_VAULT_PASSPHRASE` set to a 12+ character local development passphrase.
 
 ```bash
@@ -20,9 +22,9 @@ npm run cervel:extension:dev -- --browser chrome
 
 Use `--browser edge` for Edge or `--browser both` to register the native host for both browsers. `--vault /absolute/path` selects a non-default Vault. The command builds CERVEL and the extension, initializes the default Vault when needed, starts the Local Node, provisions the owner-only native-host config, installs/registers `ai.cervel.capture`, and prints the unpacked extension directory.
 
-Then open `chrome://extensions` or `edge://extensions`, enable Developer mode, choose **Load unpacked**, and select the printed extension directory. The development manifest carries a fixed public key, giving Chrome and Edge the stable development extension ID `ljaccdmbcojoogpmgkmglchlnhogiomf`; the native host is restricted to that origin.
+Then open `chrome://extensions` or `edge://extensions`, enable Developer mode, choose **Load unpacked**, and select the printed extension directory. The Chromium/Edge developer build receives a fixed public key at build time, giving it the stable development extension ID `ljaccdmbcojoogpmgkmglchlnhogiomf`; the source manifest remains identity-neutral, and the native host is restricted to that development origin.
 
-The installer writes native-host registration only into the current user's profile. On macOS/Linux it creates an executable launcher and browser NativeMessagingHosts manifest. On Windows it creates the developer launcher/manifest and user-level Chrome/Edge registry entries. It does not request administrator privileges, publish the extension, or expose the Local Node token to browser JavaScript.
+The installer writes native-host registration only into the current user's profile. On macOS/Linux it creates an owner-only launcher and browser `NativeMessagingHosts` manifest. It does not request administrator privileges, publish the extension, or expose the Local Node token to browser JavaScript.
 
 ## Capture lifecycle
 
@@ -52,4 +54,4 @@ Page content cannot choose node, workspace, principal, storage location, permiss
 
 ## Packaging
 
-Run `npm run build:capture-extension` to emit `dist/extensions/chromium`, `dist/extensions/edge`, and the retained Firefox compatibility artifact. Chrome and Edge share the same security, capture, and stable developer identity contracts. Store signing remains a later distribution operation.
+Run `npm run build:capture-extension` to emit `dist/extensions/chromium`, `dist/extensions/edge`, and the retained Firefox compatibility artifact. The stable developer key is injected only into the Chromium/Edge build artifacts. Store signing and production identity remain later distribution operations.

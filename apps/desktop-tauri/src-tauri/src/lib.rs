@@ -8,7 +8,7 @@ const NODE_PORT: u16 = 8787;
 struct RuntimeState { active_vault: Option<PathBuf> }
 struct NodeRuntime(Mutex<RuntimeState>);
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct NodeStatus { running: bool, endpoint: String, managed_by_desktop: bool, vault: Option<String> }
 
 fn repo_root() -> PathBuf {

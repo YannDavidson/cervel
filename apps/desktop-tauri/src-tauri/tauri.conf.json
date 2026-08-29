@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CERVEL",
+  "version": "0.1.0",
+  "identifier": "ai.cervel.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "CERVEL",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1040,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "category": "Productivity",
+    "shortDescription": "Persistent Knowledge Infrastructure",
+    "longDescription": "CERVEL is a local-first persistent knowledge workstation for humans, organizations, AI and machines.",
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}

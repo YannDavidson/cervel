@@ -1,9 +1,15 @@
 import { readFileSync, existsSync } from "node:fs";
 const must=(ok:boolean,msg:string)=>{if(!ok)throw new Error(msg)};
 const root="apps/desktop-tauri";
-for(const p of ["src-tauri/Cargo.toml","src-tauri/tauri.conf.json","src-tauri/src/lib.rs","ui/index.html","ui/styles.css","ui/app.js"])must(existsSync(`${root}/${p}`),`missing ${p}`);
-const cargo=readFileSync(`${root}/src-tauri/Cargo.toml`,"utf8");const rust=readFileSync(`${root}/src-tauri/src/lib.rs`,"utf8");const html=readFileSync(`${root}/ui/index.html`,"utf8");const conf=JSON.parse(readFileSync(`${root}/src-tauri/tauri.conf.json`,"utf8"));
-must(cargo.includes('tauri = { version = "2"'),"Tauri v2 required");must(conf.identifier==="ai.cervel.desktop","stable desktop identity required");must(conf.bundle.targets.includes("dmg"),"macOS DMG target required");must(rust.includes("start_local_node")&&rust.includes("stop_local_node"),"Local Node lifecycle required");must(rust.includes("TrayIconBuilder"),"system tray required");
+for(const p of ["src-tauri/Cargo.toml","src-tauri/tauri.conf.json","src-tauri/src/lib.rs","src-tauri/icons/icon.png","ui/index.html","ui/styles.css","ui/app.js"])must(existsSync(`${root}/${p}`),`missing ${p}`);
+const cargo=readFileSync(`${root}/src-tauri/Cargo.toml`,"utf8"),rust=readFileSync(`${root}/src-tauri/src/lib.rs`,"utf8"),html=readFileSync(`${root}/ui/index.html`,"utf8"),js=readFileSync(`${root}/ui/app.js`,"utf8"),conf=JSON.parse(readFileSync(`${root}/src-tauri/tauri.conf.json`,"utf8"));
+must(cargo.includes('tauri = { version = "2"'),"Tauri v2 required");
+must(!cargo.includes("tauri-plugin-shell")&&!cargo.includes("tauri-plugin-dialog"),"unused native plugins must not expand the shell permission surface");
+must(conf.identifier==="ai.cervel.desktop","stable desktop identity required");must(conf.bundle.targets.includes("dmg")&&conf.bundle.targets.includes("app"),"macOS app and DMG targets required");must(conf.app.withGlobalTauri===true,"stable global Tauri API required");
+must(!conf.app.security.csp.includes("127.0.0.1")&&!conf.app.security.csp.includes("localhost:*"),"renderer must not have direct Local Node network access");
+must(rust.includes("const NODE_PORT: u16 = 8787"),"Desktop must use the canonical Local Node port");must(rust.includes('run_cli("start"')&&rust.includes('run_cli("lock"'),"Desktop lifecycle must use existing Local Node commands");must(!rust.includes('arg("serve")'),"unsupported serve lifecycle command is forbidden");
+must(rust.includes("Emitter")&&rust.includes("TrayIconBuilder"),"Tauri event and system tray integration required");must(!rust.includes("passphrase: Option<String>"),"Vault passphrase must not persist in native runtime state");must(rust.includes('arg("--no-node")'),"Browser bridge registration must not redundantly restart the Desktop-managed Node");
+must(js.includes("window.__TAURI__?.core?.invoke"),"renderer must use the stable Tauri global invoke API");must(js.includes('type="password"')&&js.includes("autocomplete=\"off\""),"Vault secrets require a password input");must(js.includes("register_browser_bridge',{passphrase:"),"Browser bridge must receive explicit per-operation authorization");
 for(const label of ["Vault","Corpus Explorer","Search","Knowledge Graph","Capture","Cortex","Trace","Models","Connections"])must(html.includes(label),`missing ${label}`);
 must(html.includes("Knowledge stays here. Reasoning may happen there."),"sovereignty boundary required");
 console.log("CERVEL Desktop Shell v1 contract: OK");

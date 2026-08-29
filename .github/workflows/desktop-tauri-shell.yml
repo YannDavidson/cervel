@@ -1,0 +1,31 @@
+name: CERVEL Desktop Tauri Shell
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop-tauri/**'
+      - 'scripts/desktop-tauri-contract.ts'
+      - '.github/workflows/desktop-tauri-shell.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop-tauri/**'
+      - 'scripts/desktop-tauri-contract.ts'
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npx tsx scripts/desktop-tauri-contract.ts
+
+  mac-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check Rust control plane
+        working-directory: apps/desktop-tauri/src-tauri
+        run: cargo check

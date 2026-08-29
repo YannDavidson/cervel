@@ -29,3 +29,12 @@ jobs:
       - name: Check Rust control plane
         working-directory: apps/desktop-tauri/src-tauri
         run: cargo check
+      - name: Build native macOS executable
+        working-directory: apps/desktop-tauri/src-tauri
+        run: cargo build --release
+      - name: Inspect native executable
+        working-directory: apps/desktop-tauri/src-tauri
+        run: |
+          test -x target/release/cervel-desktop
+          file target/release/cervel-desktop
+          codesign -dvv target/release/cervel-desktop 2>&1 || true

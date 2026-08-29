@@ -5,10 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 const NODE_PORT: u16 = 8787;
 
 #[derive(Default)]
-struct RuntimeState {
-    active_vault: Option<PathBuf>,
-    passphrase: Option<String>,
-}
+struct RuntimeState { active_vault: Option<PathBuf> }
 struct NodeRuntime(Mutex<RuntimeState>);
 
 #[derive(Serialize)]
@@ -32,12 +29,13 @@ fn validate_vault(path: &Path) -> Result<(), String> {
     if !path.join("vault.json").is_file() { return Err("Select a CERVEL Vault containing vault.json.".into()); }
     Ok(())
 }
-fn run_cli(command: &str, vault: &Path, passphrase: &str) -> Result<(), String> {
+fn run_cli(command: &str, vault: &Path, passphrase: Option<&str>) -> Result<(), String> {
     let cli = cli_path();
     if !cli.exists() { return Err("Local Node build not found. Run npm run build first.".into()); }
-    let output = Command::new("node").arg(cli).arg(command).arg("--vault").arg(vault).arg("--port").arg(NODE_PORT.to_string())
-        .env("CERVEL_VAULT_PASSPHRASE", passphrase)
-        .stdin(Stdio::null()).output().map_err(|e| format!("Unable to run CERVEL Local Node: {e}"))?;
+    let mut process=Command::new("node");
+    process.arg(cli).arg(command).arg("--vault").arg(vault).arg("--port").arg(NODE_PORT.to_string()).stdin(Stdio::null());
+    if let Some(secret)=passphrase { process.env("CERVEL_VAULT_PASSPHRASE",secret); }
+    let output=process.output().map_err(|e| format!("Unable to run CERVEL Local Node: {e}"))?;
     if !output.status.success() {
         let message=String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if message.is_empty(){format!("cervel {command} failed") } else { message });
@@ -53,22 +51,15 @@ fn start_local_node(runtime: State<NodeRuntime>, vault_path: String, passphrase:
     if passphrase.len() < 12 { return Err("Vault passphrase must be at least 12 characters.".into()); }
     let vault=PathBuf::from(vault_path);
     validate_vault(&vault)?;
-    if !is_node_running() { run_cli("start", &vault, &passphrase)?; }
-    {
-        let mut state=runtime.0.lock().map_err(|_| "Node runtime lock poisoned")?;
-        state.active_vault=Some(vault);
-        state.passphrase=Some(passphrase);
-    }
+    if !is_node_running() { run_cli("start", &vault, Some(&passphrase))?; }
+    runtime.0.lock().map_err(|_| "Node runtime lock poisoned")?.active_vault=Some(vault);
     Ok(status_for(&runtime))
 }
 
 #[tauri::command]
 fn stop_local_node(runtime: State<NodeRuntime>) -> Result<NodeStatus, String> {
-    let credentials={
-        let state=runtime.0.lock().map_err(|_| "Node runtime lock poisoned")?;
-        state.active_vault.clone().zip(state.passphrase.clone())
-    };
-    if let Some((vault,passphrase))=credentials { if is_node_running() { run_cli("lock", &vault, &passphrase)?; } }
+    let vault=runtime.0.lock().map_err(|_| "Node runtime lock poisoned")?.active_vault.clone();
+    if let Some(vault)=vault { if is_node_running() { run_cli("lock", &vault, None)?; } }
     Ok(status_for(&runtime))
 }
 
@@ -76,14 +67,12 @@ fn stop_local_node(runtime: State<NodeRuntime>) -> Result<NodeStatus, String> {
 fn vault_home() -> String { dirs_home().join(".cervel/vaults").to_string_lossy().to_string() }
 
 #[tauri::command]
-fn register_browser_bridge(app: AppHandle) -> Result<String, String> {
+fn register_browser_bridge(app: AppHandle, passphrase: String) -> Result<String, String> {
+    if passphrase.len() < 12 { return Err("Vault passphrase must be at least 12 characters.".into()); }
     let script = repo_root().join("dist/scripts/browser-alpha-dev-installer.js");
     if !script.exists() { return Err("Browser bridge installer is not built.".into()); }
     let state=app.state::<NodeRuntime>();
-    let (vault,passphrase)={
-        let runtime=state.0.lock().map_err(|_| "Node runtime lock poisoned")?;
-        runtime.active_vault.clone().zip(runtime.passphrase.clone()).ok_or("Unlock a Vault before registering the Browser bridge.")?
-    };
+    let vault=state.0.lock().map_err(|_| "Node runtime lock poisoned")?.active_vault.clone().ok_or("Unlock a Vault before registering the Browser bridge.")?;
     Command::new("node").arg(script).arg("--browser").arg("chrome").arg("--vault").arg(vault)
         .env("CERVEL_VAULT_PASSPHRASE", passphrase).env("CERVEL_DESKTOP_MANAGED", "1")
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;

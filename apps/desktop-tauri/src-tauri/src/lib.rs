@@ -73,7 +73,7 @@ fn register_browser_bridge(app: AppHandle, passphrase: String) -> Result<String,
     if !script.exists() { return Err("Browser bridge installer is not built.".into()); }
     let state=app.state::<NodeRuntime>();
     let vault=state.0.lock().map_err(|_| "Node runtime lock poisoned")?.active_vault.clone().ok_or("Unlock a Vault before registering the Browser bridge.")?;
-    Command::new("node").arg(script).arg("--browser").arg("chrome").arg("--vault").arg(vault)
+    Command::new("node").arg(script).arg("--browser").arg("chrome").arg("--vault").arg(vault).arg("--no-node")
         .env("CERVEL_VAULT_PASSPHRASE", passphrase).env("CERVEL_DESKTOP_MANAGED", "1")
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     let _ = app.emit("browser-bridge:registration-started", ());
@@ -83,8 +83,6 @@ fn register_browser_bridge(app: AppHandle, passphrase: String) -> Result<String,
 pub fn run() {
     tauri::Builder::default()
         .manage(NodeRuntime(Mutex::new(RuntimeState::default())))
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![node_status, start_local_node, stop_local_node, vault_home, register_browser_bridge])
         .setup(|app| {
             use tauri::menu::{Menu, MenuItem};

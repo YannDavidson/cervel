@@ -5,6 +5,7 @@ on:
       - 'apps/desktop-tauri/**'
       - 'scripts/desktop-tauri-contract.ts'
       - 'scripts/desktop-workspace-contract.ts'
+      - 'scripts/desktop-intelligence-contract.ts'
       - '.github/workflows/desktop-tauri-shell.yml'
   push:
     branches: [main]
@@ -12,6 +13,7 @@ on:
       - 'apps/desktop-tauri/**'
       - 'scripts/desktop-tauri-contract.ts'
       - 'scripts/desktop-workspace-contract.ts'
+      - 'scripts/desktop-intelligence-contract.ts'
 jobs:
   contract:
     runs-on: ubuntu-latest
@@ -22,6 +24,7 @@ jobs:
       - run: npm ci
       - run: npx tsx scripts/desktop-tauri-contract.ts
       - run: npx tsx scripts/desktop-workspace-contract.ts
+      - run: npx tsx scripts/desktop-intelligence-contract.ts
   mac-build:
     runs-on: macos-latest
     steps:

@@ -4,13 +4,14 @@ on:
     paths:
       - 'apps/desktop-tauri/**'
       - 'scripts/desktop-tauri-contract.ts'
+      - 'scripts/desktop-workspace-contract.ts'
       - '.github/workflows/desktop-tauri-shell.yml'
   push:
     branches: [main]
     paths:
       - 'apps/desktop-tauri/**'
       - 'scripts/desktop-tauri-contract.ts'
-
+      - 'scripts/desktop-workspace-contract.ts'
 jobs:
   contract:
     runs-on: ubuntu-latest
@@ -20,7 +21,7 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: npx tsx scripts/desktop-tauri-contract.ts
-
+      - run: npx tsx scripts/desktop-workspace-contract.ts
   mac-build:
     runs-on: macos-latest
     steps:

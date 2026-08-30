@@ -1,0 +1,34 @@
+const cervelInvoke=(cmd,args={})=>window.__TAURI_INTERNALS__?.invoke(cmd,args);
+const escapeHtml=(value='')=>String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+async function loadVault(query=''){
+  const target=document.getElementById('vault-items'); if(!target)return;
+  target.innerHTML='<div class="workspace-loading">Loading persistent knowledge…</div>';
+  try{
+    const items=await cervelInvoke('vault_objects',{query,limit:80});
+    target.innerHTML=items.length?items.map(item=>`<button class="knowledge-row" data-cko="${escapeHtml(item.id)}"><span class="knowledge-kind">${escapeHtml(item.kind||'knowledge')}</span><strong>${escapeHtml(item.title||'Untitled')}</strong><small>${escapeHtml(item.summary||'')}</small><time>${escapeHtml(item.updated_at||'')}</time></button>`).join(''):'<div class="workspace-empty">No knowledge objects yet. Capture your first note or file.</div>';
+  }catch(error){target.innerHTML=`<div class="workspace-empty">${escapeHtml(error)}</div>`;}
+}
+
+async function saveNote(){
+  const title=document.getElementById('note-title').value.trim(); const body=document.getElementById('note-body').value.trim();
+  if(!body)return;
+  const button=document.getElementById('save-note'); button.disabled=true; button.textContent='Saving…';
+  try{await cervelInvoke('capture_note',{title:title||'Untitled note',body});document.getElementById('note-title').value='';document.getElementById('note-body').value='';button.textContent='Saved';await loadVault();setTimeout(()=>button.textContent='Save to Vault',900)}catch(error){button.textContent='Save failed';console.error(error)}finally{button.disabled=false;}
+}
+
+async function importFiles(paths){
+  if(!paths?.length)return; const receipt=document.getElementById('capture-receipt'); receipt.textContent=`Importing ${paths.length} file${paths.length===1?'':'s'}…`;
+  try{const result=await cervelInvoke('capture_files',{paths});receipt.textContent=`${result.accepted} captured · ${result.rejected} rejected`;await loadVault();}catch(error){receipt.textContent=String(error)}
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('save-note')?.addEventListener('click',saveNote);
+  document.getElementById('note-body')?.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')saveNote()});
+  const search=document.getElementById('vault-search'); let timer; search?.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>loadVault(search.value.trim()),180)});
+  document.getElementById('choose-files')?.addEventListener('click',async()=>{try{const paths=await cervelInvoke('choose_capture_files');await importFiles(paths)}catch(error){console.error(error)}});
+  const drop=document.getElementById('drop-zone'); ['dragenter','dragover'].forEach(name=>drop?.addEventListener(name,e=>{e.preventDefault();drop.classList.add('dragging')})); ['dragleave','drop'].forEach(name=>drop?.addEventListener(name,e=>{e.preventDefault();drop.classList.remove('dragging')}));
+  drop?.addEventListener('drop',e=>importFiles([...e.dataTransfer.files].map(file=>file.path).filter(Boolean)));
+  document.querySelector('[data-view="vault"]')?.addEventListener('click',()=>loadVault()); document.querySelector('[data-view="search"]')?.addEventListener('click',()=>loadVault(document.getElementById('vault-search')?.value||''));
+});
+window.CERVEL_WORKSPACE={loadVault,importFiles};

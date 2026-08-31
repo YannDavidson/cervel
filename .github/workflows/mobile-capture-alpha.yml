@@ -1,0 +1,54 @@
+name: CERVEL Mobile Capture Alpha
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/mobile-capture/**'
+      - 'packages/embodiment/**'
+      - 'scripts/mobile-capture-alpha-contract.ts'
+      - 'tests/mobile-capture/**'
+      - '.github/workflows/mobile-capture-alpha.yml'
+jobs:
+  mobile-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:mobile-capture -- --runInBand
+      - run: npx tsx scripts/mobile-capture-alpha-contract.ts
+      - name: Typecheck Expo shell
+        working-directory: apps/mobile
+        run: npm ci && npm run typecheck
+  native-prebuild:
+    name: native-prebuild (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/mobile/package-lock.json }
+      - name: Install mobile dependencies
+        working-directory: apps/mobile
+        run: npm ci
+      - name: Validate Expo config
+        working-directory: apps/mobile
+        run: npx expo config --type public >/dev/null
+      - name: Generate native project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform ${{ matrix.platform }} --no-install --clean
+      - name: Verify native project generated
+        working-directory: apps/mobile
+        run: test -d ${{ matrix.platform }}

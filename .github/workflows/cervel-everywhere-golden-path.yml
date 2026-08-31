@@ -1,0 +1,54 @@
+name: CERVEL Everywhere Golden Path
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cervel-everywhere-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  everywhere-golden-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CERVEL_VAULT_PASSPHRASE: everywhere-golden-path-ci-passphrase
+      CERVEL_EVERYWHERE_REPORT: reports/everywhere-golden-path/report.json
+      EVERYWHERE_VAULT: /tmp/cervel-everywhere-vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Verify cross-embodiment contracts
+        run: npx jest tests/everywhere-golden-path --runInBand
+      - name: Start canonical Local Node
+        run: |
+          npm run --silent cervel -- init --vault "$EVERYWHERE_VAULT" --name "CERVEL Everywhere Golden Path"
+          npm run --silent cervel -- start --vault "$EVERYWHERE_VAULT"
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8787/ready && break; sleep 1; done
+          curl --fail --silent http://127.0.0.1:8787/ready
+          CERVEL_VAULT_PASSPHRASE="$CERVEL_VAULT_PASSPHRASE" node -e "require('./dist/apps/local-node/src/vault.js').unlockVault(process.env.EVERYWHERE_VAULT,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))" > /tmp/everywhere-secrets.json
+          {
+            echo "CERVEL_LOCAL_API_TOKEN=$(jq -r .local_api_token /tmp/everywhere-secrets.json)"
+            echo "CERVEL_GOLDEN_NODE_ID=$(jq -r .nodeId "$EVERYWHERE_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_WORKSPACE_ID=$(jq -r .workspaceId "$EVERYWHERE_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_PRINCIPAL_ID=$(jq -r .principalId "$EVERYWHERE_VAULT/runtime/bootstrap.json")"
+            echo "CERVEL_GOLDEN_STORAGE_ID=$(jq -r .storageLocationId "$EVERYWHERE_VAULT/runtime/bootstrap.json")"
+          } >> "$GITHUB_ENV"
+      - name: Chrome to Desktop to Cortex to Trace to Phone
+        run: npx tsx scripts/everywhere-golden-path.ts
+      - name: Enforce automated qualification boundary
+        run: jq -e '.result == "passed" and .qualification.automated_api_path == "passed" and .qualification.physical_chrome == "pending" and .qualification.packaged_desktop == "pending" and .qualification.physical_phone == "pending"' "$CERVEL_EVERYWHERE_REPORT"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cervel-everywhere-golden-path-${{ github.sha }}
+          path: |
+            reports/everywhere-golden-path/
+            ${{ env.EVERYWHERE_VAULT }}/runtime/node.log
+          if-no-files-found: warn

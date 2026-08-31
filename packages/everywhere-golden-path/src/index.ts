@@ -1,0 +1,9 @@
+export const CERVEL_EVERYWHERE_PROTOCOL="cervel-everywhere-golden-path/v0.1" as const;
+export const EVERYWHERE_STAGES=["chrome_capture","desktop_visible","cortex_answer","trace_verified","phone_visible"] as const;
+export type EverywhereStage=typeof EVERYWHERE_STAGES[number];
+export type EverywhereEvidence={stage:EverywhereStage;cko_id:string;detail:string;answer_id?:string;trace_digest?:string};
+export type EverywhereReport={protocol:typeof CERVEL_EVERYWHERE_PROTOCOL;run_id:string;marker:string;started_at:string;completed_at?:string;result:"running"|"passed"|"failed";canonical_cko_id?:string;stages:Partial<Record<EverywhereStage,EverywhereEvidence>>;qualification:{automated_api_path:"pending"|"passed";physical_chrome:"pending";packaged_desktop:"pending";physical_phone:"pending"}};
+
+export function assertEverywhereContinuity(report:EverywhereReport){const missing=EVERYWHERE_STAGES.filter(stage=>!report.stages[stage]);if(missing.length)throw new Error(`EVERYWHERE_STAGE_MISSING:${missing.join(",")}`);const ids=EVERYWHERE_STAGES.map(stage=>report.stages[stage]!.cko_id),canonical=ids[0];if(ids.some(id=>id!==canonical))throw new Error("EVERYWHERE_CKO_ID_DIVERGED");const cortex=report.stages.cortex_answer!,trace=report.stages.trace_verified!;if(!cortex.answer_id||!trace.answer_id||cortex.answer_id!==trace.answer_id)throw new Error("EVERYWHERE_ANSWER_TRACE_DIVERGED");return{cko_id:canonical,answer_id:cortex.answer_id,stages:EVERYWHERE_STAGES.length};}
+
+export function startEverywhereReport(marker:string):EverywhereReport{return{protocol:CERVEL_EVERYWHERE_PROTOCOL,run_id:`everywhere-${Date.now()}`,marker,started_at:new Date().toISOString(),result:"running",stages:{},qualification:{automated_api_path:"pending",physical_chrome:"pending",packaged_desktop:"pending",physical_phone:"pending"}};}

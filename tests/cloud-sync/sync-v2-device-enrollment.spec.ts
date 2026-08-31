@@ -1,4 +1,3 @@
-import {describe,expect,it} from "vitest";
 import {generateEmbodimentDeviceV2,createEnrollmentChallengeV2,sealSyncRootForDeviceV2,openSyncRootForDeviceV2} from "../../packages/cloud-sync/src/device-crypto";
 import {newDeviceRegistryV2,enrollDeviceV2,revokeDeviceV2,rotateSessionsToEpoch,assertDeviceEpoch} from "../../packages/cloud-sync/src/device-registry";
 const permissions=(vault:string)=>[{capability:"sync.read" as const,effect:"allow" as const,scope:{vault_id:vault}},{capability:"sync.write" as const,effect:"allow" as const,scope:{vault_id:vault}},{capability:"device.pair" as const,effect:"allow" as const,scope:{vault_id:vault}}];

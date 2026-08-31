@@ -2,7 +2,7 @@ name: CERVEL Cloud Sync Integration
 on:
   pull_request:
     branches: [main]
-    paths: ['packages/cloud-sync/**','apps/sync-relay/**','apps/local-node/**','apps/desktop/**','db/migrations/**','scripts/validate-cloud-sync.ts','tests/cloud-sync/**','docs/CLOUD_SYNC.md','package*.json','.github/workflows/cloud-sync-integration.yml']
+    paths: ['packages/cloud-sync/**','packages/embodiment/**','apps/sync-relay/**','apps/local-node/**','apps/desktop/**','apps/capture-extension/**','apps/mobile/**','db/migrations/**','scripts/validate-cloud-sync.ts','scripts/sync-v2-contract.ts','tests/cloud-sync/**','docs/CLOUD_SYNC.md','package*.json','.github/workflows/cloud-sync-integration.yml']
 jobs:
   cloud-sync:
     runs-on: ubuntu-latest
@@ -30,6 +30,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm install --no-audit --no-fund
       - run: npm run build
+      - run: npx tsx scripts/sync-v2-contract.ts
       - run: npm run db:migrate
       - name: Start zero-knowledge relay
         run: |

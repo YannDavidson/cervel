@@ -1,0 +1,31 @@
+name: CERVEL Universal Share Integration
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/mobile-capture/**'
+      - 'scripts/universal-share-contract.ts'
+      - 'docs/UNIVERSAL_SHARE_TO_CERVEL.md'
+      - '.github/workflows/universal-share.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/mobile-capture/**'
+      - 'scripts/universal-share-contract.ts'
+      - 'docs/UNIVERSAL_SHARE_TO_CERVEL.md'
+jobs:
+  share-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx tsx scripts/universal-share-contract.ts
+      - name: Typecheck Expo shell
+        working-directory: apps/mobile
+        run: npx tsc --noEmit

@@ -1,0 +1,26 @@
+name: CERVEL Mobile Capture Alpha
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/mobile-capture/**'
+      - 'packages/embodiment/**'
+      - 'scripts/mobile-capture-alpha-contract.ts'
+      - 'tests/mobile-capture/**'
+      - '.github/workflows/mobile-capture-alpha.yml'
+jobs:
+  mobile-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:mobile-capture -- --runInBand
+      - run: npx tsx scripts/mobile-capture-alpha-contract.ts
+      - name: Typecheck Expo shell
+        working-directory: apps/mobile
+        run: npm ci && npm run typecheck

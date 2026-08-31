@@ -1,0 +1,28 @@
+name: CERVEL Mobile Life Memory
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'apps/api/src/mobile-routes.ts'
+      - 'apps/api/src/life-corpus.ts'
+      - 'packages/mobile-capture/**'
+      - 'packages/mobile-life-memory/**'
+      - 'packages/life-corpus/**'
+      - 'scripts/mobile-life-memory-contract.ts'
+      - '.github/workflows/mobile-life-memory.yml'
+jobs:
+  memory-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:mobile-capture -- --runInBand
+      - run: npx tsx scripts/mobile-life-memory-contract.ts
+      - name: Typecheck Expo shell
+        working-directory: apps/mobile
+        run: npm ci && npm run typecheck

@@ -1,0 +1,71 @@
+name: CERVEL Developer Doctor Integration
+
+on:
+  pull_request:
+    paths:
+      - "scripts/developer-doctor.ts"
+      - "scripts/developer-bootstrap.ts"
+      - "package.json"
+      - "docs/DEVELOPER_DOCTOR.md"
+      - ".github/workflows/developer-doctor-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-room-doctor:
+    name: clean-room / developer-doctor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout clean repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Build CERVEL
+        run: npm run build
+
+      - name: Assert doctor diagnoses uninitialized environment
+        shell: bash
+        run: |
+          rm -rf "$HOME/.cervel"
+          set +e
+          npm run cervel:doctor -- --json > /tmp/doctor-before.json
+          status=$?
+          set -e
+          test "$status" -ne 0
+          jq -e '.ok == false and .failures >= 1' /tmp/doctor-before.json
+          jq -e '.checks[] | select(.name == "Developer setup" and .level == "fail")' /tmp/doctor-before.json
+
+      - name: Bootstrap CERVEL
+        run: npm run cervel:setup
+
+      - name: Assert doctor reports healthy environment
+        run: |
+          npm run cervel:doctor -- --json > /tmp/doctor-after.json
+          jq -e '.ok == true and .failures == 0' /tmp/doctor-after.json
+          jq -e '.checks[] | select(.name == "Docker daemon" and .level == "pass")' /tmp/doctor-after.json
+          jq -e '.checks[] | select(.name == "PostgreSQL readiness" and .level == "pass")' /tmp/doctor-after.json
+          jq -e '.checks[] | select(.name == "Bootstrap identity" and .level == "pass")' /tmp/doctor-after.json
+          jq -e '.checks[] | select(.name == "Local Node API" and .level == "pass")' /tmp/doctor-after.json
+
+      - name: Show human-readable doctor report
+        run: npm run cervel:doctor
+
+      - name: Stop developer Local Node
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$HOME/.cervel/developer/bootstrap-passphrase" ] && [ -f "$HOME/.cervel/vaults/developer/vault.json" ]; then
+            export CERVEL_VAULT_PASSPHRASE="$(cat "$HOME/.cervel/developer/bootstrap-passphrase")"
+            npm run --silent cervel -- lock --vault "$HOME/.cervel/vaults/developer" || true
+          fi

@@ -1,0 +1,133 @@
+name: CERVEL Developer Bootstrap Integration
+
+on:
+  pull_request:
+    paths:
+      - "scripts/developer-bootstrap.ts"
+      - "apps/local-node/**"
+      - "scripts/db/**"
+      - "db/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".env.example"
+      - ".github/workflows/developer-bootstrap-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: developer-bootstrap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap-ubuntu:
+    name: clean-room / developer-bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CERVEL_DEV_VAULT: /tmp/cervel-developer-bootstrap/vault
+      CERVEL_DEV_STATE_DIR: /tmp/cervel-developer-bootstrap/state
+      CERVEL_DEV_PORT: "8787"
+      CERVEL_DEV_DB_PORT: "55432"
+
+    steps:
+      - name: Checkout clean repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Build CERVEL
+        run: npm run build
+
+      - name: Assert clean bootstrap state
+        run: |
+          test ! -e "$CERVEL_DEV_VAULT/vault.json"
+          test ! -e "$CERVEL_DEV_STATE_DIR/setup.json"
+          test ! -e "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase"
+
+      - name: Bootstrap CERVEL from zero state
+        run: npm run cervel:setup
+
+      - name: Verify Local Node readiness
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8787/ready | tee /tmp/cervel-ready.json
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync("/tmp/cervel-ready.json","utf8")); if(!x.ok) process.exit(1)'
+
+      - name: Validate non-secret setup contract
+        run: |
+          test -f "$CERVEL_DEV_STATE_DIR/setup.json"
+          test -f "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = process.env.CERVEL_DEV_STATE_DIR + '/setup.json';
+          const state = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const required = [
+            'format', 'vault', 'url', 'node_id', 'workspace_id',
+            'principal_id', 'storage_location_id', 'authority',
+            'passphrase_source', 'updated_at'
+          ];
+          for (const key of required) {
+            if (!state[key]) throw new Error(`missing setup field: ${key}`);
+          }
+          if (state.format !== 'cervel-developer-setup/v0.1') throw new Error('unexpected setup format');
+          if (state.passphrase_source !== 'generated-local-file') throw new Error('default bootstrap did not use generated local passphrase');
+          const serialized = JSON.stringify(state).toLowerCase();
+          const forbidden = [
+            'local_api_token', 'api_token', 'database_password', 'vault_key',
+            'device_private_key', 'private_key', 'bootstrap-passphrase'
+          ];
+          for (const term of forbidden) {
+            if (serialized.includes(term)) throw new Error(`secret-like field leaked into setup.json: ${term}`);
+          }
+          console.log('setup.json contract validated');
+          NODE
+
+      - name: Record bootstrap identity before rerun
+        run: |
+          node -e 'const fs=require("fs"); const s=JSON.parse(fs.readFileSync(process.env.CERVEL_DEV_STATE_DIR+"/setup.json","utf8")); fs.writeFileSync("/tmp/cervel-bootstrap-identity.json", JSON.stringify({node_id:s.node_id,workspace_id:s.workspace_id,principal_id:s.principal_id,storage_location_id:s.storage_location_id,authority:s.authority}))'
+
+      - name: Re-run bootstrap to prove idempotency
+        run: npm run cervel:setup
+
+      - name: Verify identity stability after rerun
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const before = JSON.parse(fs.readFileSync('/tmp/cervel-bootstrap-identity.json', 'utf8'));
+          const after = JSON.parse(fs.readFileSync(process.env.CERVEL_DEV_STATE_DIR + '/setup.json', 'utf8'));
+          for (const key of ['node_id','workspace_id','principal_id','storage_location_id','authority']) {
+            if (before[key] !== after[key]) throw new Error(`bootstrap identity changed on rerun: ${key}`);
+          }
+          console.log('idempotent bootstrap identity validated');
+          NODE
+          curl --fail --silent --show-error http://127.0.0.1:8787/ready >/dev/null
+
+      - name: Verify repository secret hygiene
+        run: |
+          test ! -f .env || git check-ignore -q .env
+          test ! -e ./bootstrap-passphrase
+          test ! -e ./setup.json
+          if git status --porcelain --untracked-files=all | grep -E 'bootstrap-passphrase|setup\.json'; then
+            echo "Developer bootstrap secret/state file appeared inside repository"
+            exit 1
+          fi
+
+      - name: Stop developer Local Node
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase" ] && [ -f "$CERVEL_DEV_VAULT/vault.json" ]; then
+            CERVEL_VAULT_PASSPHRASE="$(cat "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase")" \
+              npm run --silent cervel -- lock --vault "$CERVEL_DEV_VAULT" || true
+          fi

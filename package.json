@@ -16,6 +16,7 @@
   "scripts": {
     "dev:api": "tsx apps/api/src/server.ts",
     "cervel": "tsx apps/local-node/src/cli.ts",
+    "cervel:setup": "tsx scripts/developer-bootstrap.ts",
     "build": "tsc -p tsconfig.json",
     "start:api": "node dist/apps/api/src/server.js",
     "dev:sync-relay": "tsx apps/sync-relay/src/server.ts",

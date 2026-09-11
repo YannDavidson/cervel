@@ -37,6 +37,18 @@ On a successful first run the bootstrap:
 
 The final output includes the Vault path, Local Node URL, node ID, workspace ID, and developer setup state path.
 
+## Diagnose a local environment
+
+Use the read-only developer doctor whenever setup or startup behavior is unclear:
+
+```bash
+npm run cervel:doctor
+```
+
+The doctor inspects prerequisites, developer state, Vault/runtime consistency, PostgreSQL readiness, ports, and Local Node `/ready` without creating, repairing, starting, or stopping anything. Every blocking failure is reported with a concrete corrective action.
+
+For the full diagnostics contract and machine-readable mode, see [`DEVELOPER_DOCTOR.md`](DEVELOPER_DOCTOR.md).
+
 ## Idempotency
 
 The command is designed to be rerun.
@@ -119,7 +131,13 @@ Local Node responds successfully at /ready
 Non-secret developer setup state is available
 ```
 
-After setup, launch the Desktop Alpha with:
+After setup, validate the environment with:
+
+```bash
+npm run cervel:doctor
+```
+
+Then launch the Desktop Alpha with:
 
 ```bash
 npm run desktop:dev

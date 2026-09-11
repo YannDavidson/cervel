@@ -145,6 +145,8 @@ git clone https://github.com/YannDavidson/cervel.git
 cd cervel
 npm ci
 npm run cervel:setup
+npm run cervel:doctor
+npm run cervel:verify
 ```
 
 `cervel:setup` is the canonical developer bootstrap. It:
@@ -160,13 +162,15 @@ npm run cervel:setup
 
 The command is safe to rerun. Existing developer Vault state is reused rather than recreated.
 
+`cervel:doctor` performs read-only environment diagnostics. `cervel:verify` consumes bootstrap state automatically, resolves the Local Node credential in memory, and runs the developer alpha golden path without requiring manual `CERVEL_GOLDEN_*` identifiers or `CERVEL_LOCAL_API_TOKEN` export.
+
 Then launch the Desktop Alpha:
 
 ```bash
 npm run desktop:dev
 ```
 
-For the bootstrap contract, paths, environment overrides, and troubleshooting expectations, see [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md).
+See [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md), [`docs/DEVELOPER_DOCTOR.md`](docs/DEVELOPER_DOCTOR.md), and [`docs/DEVELOPER_VERIFY.md`](docs/DEVELOPER_VERIFY.md) for the local developer contracts and troubleshooting expectations.
 
 ### API development
 
@@ -193,7 +197,15 @@ The default local configuration is documented in [`.env.example`](.env.example).
 
 ## Verification
 
-The repository includes contract, runtime, integration, and alpha-path test suites. Useful entry points include:
+The canonical developer alpha verification command is:
+
+```bash
+npm run cervel:verify
+```
+
+It derives the developer Vault, Local Node URL, runtime identity, and API credential from bootstrap state and the encrypted Vault boundary automatically.
+
+The repository also includes lower-level contract, runtime, integration, and alpha-path test suites. Useful entry points include:
 
 ```bash
 npm test

@@ -39,7 +39,7 @@ jobs:
         run: |
           rm -rf "$HOME/.cervel"
           set +e
-          npm run cervel:doctor -- --json > /tmp/doctor-before.json
+          npm run --silent cervel:doctor -- --json > /tmp/doctor-before.json
           status=$?
           set -e
           test "$status" -ne 0
@@ -51,7 +51,7 @@ jobs:
 
       - name: Assert doctor reports healthy environment
         run: |
-          npm run cervel:doctor -- --json > /tmp/doctor-after.json
+          npm run --silent cervel:doctor -- --json > /tmp/doctor-after.json
           jq -e '.ok == true and .failures == 0' /tmp/doctor-after.json
           jq -e '.checks[] | select(.name == "Docker daemon" and .level == "pass")' /tmp/doctor-after.json
           jq -e '.checks[] | select(.name == "PostgreSQL readiness" and .level == "pass")' /tmp/doctor-after.json

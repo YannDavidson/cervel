@@ -18,6 +18,7 @@
     "cervel": "tsx apps/local-node/src/cli.ts",
     "cervel:setup": "tsx scripts/developer-bootstrap.ts",
     "cervel:doctor": "tsx scripts/developer-doctor.ts",
+    "cervel:verify": "tsx scripts/developer-verify.ts",
     "build": "tsc -p tsconfig.json",
     "start:api": "node dist/apps/api/src/server.js",
     "dev:sync-relay": "tsx apps/sync-relay/src/server.ts",

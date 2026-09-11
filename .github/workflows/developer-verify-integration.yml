@@ -1,0 +1,88 @@
+name: CERVEL Developer Verify Integration
+
+on:
+  pull_request:
+    paths:
+      - "scripts/developer-verify.ts"
+      - "scripts/developer-bootstrap.ts"
+      - "scripts/alpha-golden-path.ts"
+      - "package.json"
+      - "docs/DEVELOPER_VERIFY.md"
+      - ".github/workflows/developer-verify-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-room-verify:
+    name: clean-room / developer-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout clean repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Build CERVEL
+        run: npm run build
+
+      - name: Assert verify fails before bootstrap
+        shell: bash
+        run: |
+          rm -rf "$HOME/.cervel"
+          set +e
+          npm run --silent cervel:verify > /tmp/verify-before.log 2>&1
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -q "npm run cervel:setup" /tmp/verify-before.log
+
+      - name: Bootstrap developer environment
+        run: npm run cervel:setup
+
+      - name: Assert no manual golden identity is supplied
+        shell: bash
+        run: |
+          test -z "${CERVEL_LOCAL_API_TOKEN:-}"
+          test -z "${CERVEL_GOLDEN_NODE_ID:-}"
+          test -z "${CERVEL_GOLDEN_WORKSPACE_ID:-}"
+          test -z "${CERVEL_GOLDEN_PRINCIPAL_ID:-}"
+          test -z "${CERVEL_GOLDEN_STORAGE_ID:-}"
+
+      - name: Run self-contained alpha verification
+        run: npm run cervel:verify
+
+      - name: Validate developer verification report
+        run: |
+          REPORT="reports/golden-path/developer-verify.json"
+          test -f "$REPORT"
+          jq -e '.checks.vault_created.status == "passed"' "$REPORT"
+          jq -e '.checks.node_ready.status == "passed"' "$REPORT"
+          jq -e '.checks.retrieval.status == "passed"' "$REPORT"
+          jq -e '.checks.cited_answer.status == "passed"' "$REPORT"
+          jq -e '.checks.trace_complete.status == "passed"' "$REPORT"
+          jq -e '.checks.intelligence_routing.status == "passed"' "$REPORT"
+          jq -e '.checks.sync_convergence.status == "passed"' "$REPORT"
+          jq -e '.checks.revocation.status == "passed"' "$REPORT"
+
+      - name: Confirm doctor remains healthy after verification
+        run: npm run cervel:doctor
+
+      - name: Stop developer Local Node
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$HOME/.cervel/developer/bootstrap-passphrase" ] && [ -f "$HOME/.cervel/vaults/developer/vault.json" ]; then
+            export CERVEL_VAULT_PASSPHRASE="$(cat "$HOME/.cervel/developer/bootstrap-passphrase")"
+            npm run --silent cervel -- lock --vault "$HOME/.cervel/vaults/developer" || true
+          fi

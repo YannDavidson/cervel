@@ -132,26 +132,41 @@ Authorization constrains the knowledge universe *before* retrieval.
 
 ### Prerequisites
 
-- Node.js compatible with the repository toolchain
+- Node.js 20 or newer
 - npm
-- Docker
-- PostgreSQL 16 + pgvector (provided by Docker Compose for local development)
-- S3-compatible object storage such as MinIO (also provided by Docker Compose)
+- Docker with a running daemon
 
-### Quick start — Desktop Alpha
+The developer bootstrap provisions the local CERVEL Vault boundary and starts its PostgreSQL 16 + pgvector container automatically. No cloud account or external model API key is required for the default sovereign local path.
+
+### Quick start — local CERVEL
 
 ```bash
 git clone https://github.com/YannDavidson/cervel.git
 cd cervel
-
-cp .env.example .env
 npm ci
+npm run cervel:setup
+```
 
-docker compose up -d
+`cervel:setup` is the canonical developer bootstrap. It:
+
+- checks Node.js, npm, and Docker;
+- creates `.env` from `.env.example` when needed;
+- creates or reuses a developer Vault;
+- generates a developer-only Vault passphrase when none is supplied and stores it outside the Vault and repository;
+- starts the Vault-scoped PostgreSQL + pgvector container;
+- applies migrations and idempotent database bootstrap;
+- starts the Local Node and waits for `/ready`;
+- records non-secret node, workspace, principal, and storage identifiers for later developer tooling.
+
+The command is safe to rerun. Existing developer Vault state is reused rather than recreated.
+
+Then launch the Desktop Alpha:
+
+```bash
 npm run desktop:dev
 ```
 
-`desktop:dev` builds the TypeScript project and launches the Electron Desktop client. Docker must be running because the Local Node alpha uses PostgreSQL 16 + pgvector.
+For the bootstrap contract, paths, environment overrides, and troubleshooting expectations, see [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md).
 
 ### API development
 
@@ -166,6 +181,8 @@ npm run cervel
 ```
 
 ### Database
+
+The developer bootstrap normally owns local database startup, migration, and bootstrap. These lower-level commands remain available for focused development:
 
 ```bash
 npm run db:migrate

@@ -6,7 +6,36 @@
 
 CERVEL is a model-independent knowledge infrastructure layer designed to keep knowledge persistent, addressable, permission-aware, provenance-rich, and usable across changing AI models, agents, applications, and execution environments.
 
-This repository contains the current CERVEL alpha implementation. It is no longer only a contracts or schema starter: it includes a runnable Local Node and API, cross-platform Desktop Alpha, ingestion and retrieval pipelines, context compilation, reasoning gateways, Trace and provenance, corpus runtimes, external agent interfaces, cloud-sync foundations, capture surfaces, and executable conformance and golden-path tests.
+This repository contains the current CERVEL alpha implementation. It includes a runnable Local Node and API, cross-platform Desktop Alpha, ingestion and retrieval pipelines, context compilation, reasoning gateways, Trace and provenance, corpus runtimes, external agent interfaces, cloud-sync foundations, capture surfaces, and executable conformance and golden-path tests.
+
+## Quick start — four lines from GitHub to CERVEL
+
+Prerequisites: Node.js 20+, npm, and Docker with a running daemon.
+
+```bash
+git clone https://github.com/YannDavidson/cervel.git
+cd cervel
+npm ci
+npm run cervel:dev
+```
+
+`npm run cervel:dev` is the canonical development launcher. It runs diagnostics, bootstraps the developer environment when necessary, starts local infrastructure and the Local Node, waits for readiness, and launches CERVEL Desktop.
+
+```text
+cervel:doctor
+     ↓
+bootstrap if necessary
+     ↓
+start infrastructure
+     ↓
+start Local Node
+     ↓
+wait for readiness
+     ↓
+start Desktop
+```
+
+No cloud account or external model API key is required for the default sovereign local path. Existing developer Vault state is reused rather than recreated.
 
 ## Why CERVEL exists
 
@@ -56,49 +85,19 @@ The repository includes a TypeScript/Node API, Local Node CLI, PostgreSQL + pgve
 
 CERVEL Desktop is a sandboxed Electron client for the Local Node, not a second knowledge runtime.
 
-Current alpha surfaces include:
-
-- encrypted Vault onboarding and lifecycle;
-- notes, files, sources, and drag-and-drop ingestion;
-- scoped hybrid search;
-- cited local answers;
-- answer-to-source Trace inspection;
-- semantic graph views;
-- node health and indexing visibility;
-- backup, restore, and verification;
-- provider privacy controls;
-- deterministic offline reasoning and local/OpenAI-compatible provider configuration;
-- tray operation and crash recovery.
+Current alpha surfaces include encrypted Vault onboarding and lifecycle; notes, files, sources, and drag-and-drop ingestion; scoped hybrid search; cited local answers; answer-to-source Trace inspection; semantic graph views; node health and indexing visibility; backup, restore, and verification; provider privacy controls; deterministic offline reasoning and local/OpenAI-compatible provider configuration; tray operation and crash recovery.
 
 See [`docs/DESKTOP_ALPHA.md`](docs/DESKTOP_ALPHA.md) for the Desktop security and runtime boundary.
 
 ### Knowledge and intelligence runtime
 
-The repository also contains foundations and tests for:
-
-- Intelligence Gateway
-- Knowledge Compiler
-- semantic kernel
-- Deliverables Engine
-- Corpus Engine
-- Life Corpus runtime
-- Enterprise Corpus runtime
-- external AI / Agent Gateway
-- MCP server
-- cloud sync
-- browser capture extension
-- mobile capture
-- source synchronization
-
-These surfaces are at different alpha maturity levels. Presence in the repository should not be interpreted as production readiness.
+The repository also contains foundations and tests for Intelligence Gateway, Knowledge Compiler, semantic kernel, Deliverables Engine, Corpus Engine, Life Corpus runtime, Enterprise Corpus runtime, external AI / Agent Gateway, MCP server, cloud sync, browser capture extension, mobile capture, and source synchronization. These surfaces are at different alpha maturity levels. Presence in the repository should not be interpreted as production readiness.
 
 ## Core invariant
 
 > **Knowledge identity is independent from storage and model providers.**
 
-A model is a reasoning dependency. It is not the authoritative memory layer.
-
-CERVEL is designed so that a knowledge object can retain its identity, provenance, permissions, relationships, and history even when storage locations, applications, agents, or reasoning models change.
+A model is a reasoning dependency. It is not the authoritative memory layer. CERVEL is designed so that a knowledge object can retain its identity, provenance, permissions, relationships, and history even when storage locations, applications, agents, or reasoning models change.
 
 ## Agent knowledge firewall
 
@@ -124,53 +123,24 @@ model / agent output
 
 ### Non-negotiable security rule
 
-**Never retrieve globally and filter unauthorized content afterward.**
-
-Authorization constrains the knowledge universe *before* retrieval.
+**Never retrieve globally and filter unauthorized content afterward.** Authorization constrains the knowledge universe *before* retrieval.
 
 ## Local development
 
-### Prerequisites
-
-- Node.js 20 or newer
-- npm
-- Docker with a running daemon
-
-The developer bootstrap provisions the local CERVEL Vault boundary and starts its PostgreSQL 16 + pgvector container automatically. No cloud account or external model API key is required for the default sovereign local path.
-
-### Quick start — local CERVEL
+The one-command launcher above is the normal developer path. Lower-level lifecycle tools remain available for diagnostics and focused work:
 
 ```bash
-git clone https://github.com/YannDavidson/cervel.git
-cd cervel
-npm ci
-npm run cervel:setup
 npm run cervel:doctor
+npm run cervel:setup
 npm run cervel:verify
-```
-
-`cervel:setup` is the canonical developer bootstrap. It:
-
-- checks Node.js, npm, and Docker;
-- creates `.env` from `.env.example` when needed;
-- creates or reuses a developer Vault;
-- generates a developer-only Vault passphrase when none is supplied and stores it outside the Vault and repository;
-- starts the Vault-scoped PostgreSQL + pgvector container;
-- applies migrations and idempotent database bootstrap;
-- starts the Local Node and waits for `/ready`;
-- records non-secret node, workspace, principal, and storage identifiers for later developer tooling.
-
-The command is safe to rerun. Existing developer Vault state is reused rather than recreated.
-
-`cervel:doctor` performs read-only environment diagnostics. `cervel:verify` consumes bootstrap state automatically, resolves the Local Node credential in memory, and runs the developer alpha golden path without requiring manual `CERVEL_GOLDEN_*` identifiers or `CERVEL_LOCAL_API_TOKEN` export.
-
-Then launch the Desktop Alpha:
-
-```bash
 npm run desktop:dev
 ```
 
-See [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md), [`docs/DEVELOPER_DOCTOR.md`](docs/DEVELOPER_DOCTOR.md), and [`docs/DEVELOPER_VERIFY.md`](docs/DEVELOPER_VERIFY.md) for the local developer contracts and troubleshooting expectations.
+`cervel:setup` creates `.env` from `.env.example` when needed, creates or reuses a developer Vault, manages a developer-only Vault passphrase outside the repository, starts PostgreSQL + pgvector, applies migrations/bootstrap, starts the Local Node, waits for `/ready`, and records non-secret runtime identity for developer tooling.
+
+`cervel:doctor` is read-only diagnostics. `cervel:verify` runs the developer alpha golden path using bootstrap state automatically. These are supporting tools; `cervel:dev` is the canonical launcher.
+
+See [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md), [`docs/DEVELOPER_DOCTOR.md`](docs/DEVELOPER_DOCTOR.md), and [`docs/DEVELOPER_VERIFY.md`](docs/DEVELOPER_VERIFY.md) for detailed contracts and troubleshooting.
 
 ### API development
 
@@ -186,7 +156,7 @@ npm run cervel
 
 ### Database
 
-The developer bootstrap normally owns local database startup, migration, and bootstrap. These lower-level commands remain available for focused development:
+The developer launcher/bootstrap normally owns local database startup, migration, and bootstrap. Lower-level commands remain available:
 
 ```bash
 npm run db:migrate
@@ -197,13 +167,9 @@ The default local configuration is documented in [`.env.example`](.env.example).
 
 ## Verification
 
-The canonical developer alpha verification command is:
-
 ```bash
 npm run cervel:verify
 ```
-
-It derives the developer Vault, Local Node URL, runtime identity, and API credential from bootstrap state and the encrypted Vault boundary automatically.
 
 The repository also includes lower-level contract, runtime, integration, and alpha-path test suites. Useful entry points include:
 
@@ -225,7 +191,7 @@ npm run test:corpus-demo
 npm run alpha:golden-path
 ```
 
-Additional smoke scripts exercise semantic-kernel, corpus-engine, Life Corpus, Enterprise Corpus, and production paths. Passing tests establish the behavior covered by those tests; they are not a claim of general production readiness.
+Passing tests establish the behavior covered by those tests; they are not a claim of general production readiness.
 
 ## Repository map
 
@@ -244,9 +210,7 @@ fixtures/   Test and conformance fixtures
 
 ## Architectural status
 
-CERVEL is under active alpha development. The repository contains real executable runtime paths alongside architecture still being hardened and expanded.
-
-The current objective is to prove a complete sovereign knowledge loop:
+CERVEL is under active alpha development. The current objective is to prove a complete sovereign knowledge loop:
 
 ```text
 Capture source
@@ -265,17 +229,7 @@ The architecture is intentionally model-independent. Integrations with particula
 
 ## Security posture
 
-CERVEL is being designed around sovereign-by-design principles, including:
-
-- permission-first retrieval;
-- encrypted Vault boundaries;
-- explicit disclosure controls;
-- provenance and Trace;
-- sandboxed Desktop renderer boundaries;
-- loopback authentication for Local Node access;
-- encrypted provider configuration;
-- controlled agent read/write boundaries;
-- model/provider replaceability.
+CERVEL is being designed around sovereign-by-design principles including permission-first retrieval, encrypted Vault boundaries, explicit disclosure controls, provenance and Trace, sandboxed Desktop renderer boundaries, loopback authentication for Local Node access, encrypted provider configuration, controlled agent read/write boundaries, and model/provider replaceability.
 
 See the documentation under [`docs/`](docs/) for implementation-specific details and current limitations.
 

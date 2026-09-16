@@ -144,9 +144,18 @@ The developer bootstrap provisions the local CERVEL Vault boundary and starts it
 git clone https://github.com/YannDavidson/cervel.git
 cd cervel
 npm ci
+npm run cervel:dev
+```
+
+`npm run cervel:dev` is the canonical development launcher. It runs diagnostics, bootstraps the developer environment when necessary, starts local infrastructure and the Local Node, waits for readiness, and launches CERVEL Desktop. Existing developer Vault state is reused rather than recreated.
+
+Lower-level lifecycle commands remain available for diagnostics and focused development:
+
+```bash
 npm run cervel:setup
 npm run cervel:doctor
 npm run cervel:verify
+npm run desktop:dev
 ```
 
 `cervel:setup` is the canonical developer bootstrap. It:
@@ -163,12 +172,6 @@ npm run cervel:verify
 The command is safe to rerun. Existing developer Vault state is reused rather than recreated.
 
 `cervel:doctor` performs read-only environment diagnostics. `cervel:verify` consumes bootstrap state automatically, resolves the Local Node credential in memory, and runs the developer alpha golden path without requiring manual `CERVEL_GOLDEN_*` identifiers or `CERVEL_LOCAL_API_TOKEN` export.
-
-Then launch the Desktop Alpha:
-
-```bash
-npm run desktop:dev
-```
 
 See [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md), [`docs/DEVELOPER_DOCTOR.md`](docs/DEVELOPER_DOCTOR.md), and [`docs/DEVELOPER_VERIFY.md`](docs/DEVELOPER_VERIFY.md) for the local developer contracts and troubleshooting expectations.
 

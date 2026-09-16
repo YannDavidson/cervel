@@ -18,12 +18,18 @@ describe("deterministic developer lifecycle", () => {
     expect(source.indexOf("if (!resetConfirmed())")).toBeLessThan(source.indexOf("await stop();"));
   });
 
-  test("reset stops before removing only configured developer state", async () => {
+  test("reset validates destructive paths before confirmation and deletion", async () => {
     const source = await readFile(join(root, "scripts", "developer-lifecycle.ts"), "utf8");
+    const safety = source.indexOf("assertSafeResetRoots();");
+    const confirmation = source.indexOf("if (!resetConfirmed())");
     const stop = source.indexOf("await stop();");
     const vaultRemoval = source.indexOf("await rm(vaultRoot", stop);
     const stateRemoval = source.indexOf("await rm(stateRoot", vaultRemoval);
-    expect(stop).toBeGreaterThan(-1);
+    expect(source).toContain("must be a child of the CERVEL developer root");
+    expect(source).toContain("must be distinct, non-nested paths");
+    expect(safety).toBeGreaterThan(-1);
+    expect(confirmation).toBeGreaterThan(safety);
+    expect(stop).toBeGreaterThan(confirmation);
     expect(vaultRemoval).toBeGreaterThan(stop);
     expect(stateRemoval).toBeGreaterThan(vaultRemoval);
   });

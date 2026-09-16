@@ -7,14 +7,14 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/dependency-security-contract.ts'
-      - '.github/workflows/**'
+      - '.github/workflows/dependency-security.yml'
   push:
     branches: [main]
     paths:
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/dependency-security-contract.ts'
-      - '.github/workflows/**'
+      - '.github/workflows/dependency-security.yml'
 
 permissions:
   contents: write
@@ -32,25 +32,18 @@ jobs:
           cache: npm
       - name: Regenerate lockfile for dependency remediation
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Modernize Node 20 GitHub Actions
-        shell: bash
-        run: |
-          grep -rlZ 'actions/checkout@v4\|actions/setup-node@v4' .github/workflows --include='*.yml' --include='*.yaml' \
-            | xargs -0 -r sed -i \
-                -e 's#actions/checkout@v4#actions/checkout@v7#g' \
-                -e 's#actions/setup-node@v4#actions/setup-node@v7#g'
-      - name: Commit deterministic remediation artifacts
+      - name: Commit deterministic lockfile
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         shell: bash
         run: |
-          if git diff --quiet -- package-lock.json .github/workflows; then
-            echo 'No generated changes to commit.'
+          if git diff --quiet -- package-lock.json; then
+            echo 'Lockfile already synchronized.'
             exit 0
           fi
           git config user.name 'Yann Davidson'
           git config user.email '30988886+YannDavidson@users.noreply.github.com'
-          git add package-lock.json .github/workflows
-          git commit -s -m 'fix: lock patched dependencies and modernize actions'
+          git add package-lock.json
+          git commit -s -m 'fix: lock patched dependency graph'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
       - name: Install with locked dependency graph
         run: npm ci

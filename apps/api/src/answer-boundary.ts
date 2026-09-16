@@ -1,13 +1,15 @@
 export type AnswerEvidence = { text: string; citation?: string | null };
 
 const INSTRUCTION_LINE = /^\s*(?:system|assistant|developer|user|instruction|prompt)\s*:/i;
+const INSTRUCTION_COMMAND = /\b(?:ignore|disregard|override)\b.{0,48}\b(?:previous|above|system|developer|user)?\s*instructions?\b|\bfollow\b.{0,32}\b(?:these|the following)\s+instructions?\b|\bact as\b.{0,48}\b(?:system|assistant|developer)\b/i;
 const PROTOCOL_LINE = /cervel-(?:browser-evidence|capture)\/v\d/i;
+const INTERNAL_METADATA = /["']?(?:provenance|node_id|request_id|workspace_id|principal_id|storage_id|context_package_id|model_run_id)["']?\s*[:=]/i;
 const SECRET_ACTION = /\b(?:ignore (?:the )?(?:user|previous|above)|reveal|exfiltrate|upload|export|dump)\b.*\b(?:secret|vault|credential|password|token|system instruction)/i;
 const JSONISH = /^\s*[\[{].*[\]}]\s*$/s;
 
 function cleanLine(line: string): string | null {
   const value = line.trim();
-  if (!value || INSTRUCTION_LINE.test(value) || PROTOCOL_LINE.test(value) || SECRET_ACTION.test(value) || JSONISH.test(value)) return null;
+  if (!value || INSTRUCTION_LINE.test(value) || INSTRUCTION_COMMAND.test(value) || PROTOCOL_LINE.test(value) || INTERNAL_METADATA.test(value) || SECRET_ACTION.test(value) || JSONISH.test(value)) return null;
   return value.replace(/\s+/g, " ");
 }
 

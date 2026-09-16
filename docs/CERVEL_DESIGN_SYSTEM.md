@@ -8,7 +8,7 @@ CERVEL uses the supplied circular CERVEL mark as the canonical brand source. The
 
 `https://i.postimg.cc/3JTRqdvz/Chat-GPT-Image-Aug-24-2026-04-48-31-PM.png`
 
-Production clients MUST vendor an approved copy at `brand/cervel-mark.png`; they MUST NOT depend on the Postimg host at runtime. This keeps CERVEL usable offline and prevents a third-party image host from becoming part of the application trust or availability boundary.
+Production clients MUST consume the approved vendored copy at `packages/shared-experience/assets/brand/cervel-logo.png` (or an approved platform derivative generated from it); they MUST NOT depend on the Postimg host at runtime. This keeps CERVEL usable offline and prevents a third-party image host from becoming part of the application trust or availability boundary.
 
 The wordmark is `CERVEL`. The supporting descriptor is `Sovereign Knowledge`. The product thesis remains: Persistent Knowledge Infrastructure for humans, AI, and machines. Sovereign by design.
 

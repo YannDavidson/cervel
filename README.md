@@ -130,15 +130,9 @@ Authorization constrains the knowledge universe *before* retrieval.
 
 ## Local development
 
-### Prerequisites
+Requirements: Node.js 20 or newer, npm, and Docker with a running daemon. No cloud account or external model API key is required for the default sovereign local path.
 
-- Node.js 20 or newer
-- npm
-- Docker with a running daemon
-
-The developer bootstrap provisions the local CERVEL Vault boundary and starts its PostgreSQL 16 + pgvector container automatically. No cloud account or external model API key is required for the default sovereign local path.
-
-### Quick start — local CERVEL
+### Start CERVEL
 
 ```bash
 git clone https://github.com/YannDavidson/cervel.git
@@ -147,56 +141,23 @@ npm ci
 npm run cervel:dev
 ```
 
-`npm run cervel:dev` is the canonical development launcher. It runs diagnostics, bootstraps the developer environment when necessary, starts local infrastructure and the Local Node, waits for readiness, and launches CERVEL Desktop. Existing developer Vault state is reused rather than recreated.
+`npm run cervel:dev` is the canonical development launcher. It checks the developer environment, bootstraps when necessary, starts the local runtime, waits for readiness, and launches CERVEL Desktop while reusing existing developer Vault state.
 
-Lower-level lifecycle commands remain available for diagnostics and focused development:
+### Verify
 
 ```bash
-npm run cervel:setup
-npm run cervel:doctor
 npm run cervel:verify
-npm run desktop:dev
 ```
 
-`cervel:setup` is the canonical developer bootstrap. It:
-
-- checks Node.js, npm, and Docker;
-- creates `.env` from `.env.example` when needed;
-- creates or reuses a developer Vault;
-- generates a developer-only Vault passphrase when none is supplied and stores it outside the Vault and repository;
-- starts the Vault-scoped PostgreSQL + pgvector container;
-- applies migrations and idempotent database bootstrap;
-- starts the Local Node and waits for `/ready`;
-- records non-secret node, workspace, principal, and storage identifiers for later developer tooling.
-
-The command is safe to rerun. Existing developer Vault state is reused rather than recreated.
-
-`cervel:doctor` performs read-only environment diagnostics. `cervel:verify` consumes bootstrap state automatically, resolves the Local Node credential in memory, and runs the developer alpha golden path without requiring manual `CERVEL_GOLDEN_*` identifiers or `CERVEL_LOCAL_API_TOKEN` export.
-
-See [`docs/DEVELOPER_BOOTSTRAP.md`](docs/DEVELOPER_BOOTSTRAP.md), [`docs/DEVELOPER_DOCTOR.md`](docs/DEVELOPER_DOCTOR.md), and [`docs/DEVELOPER_VERIFY.md`](docs/DEVELOPER_VERIFY.md) for the local developer contracts and troubleshooting expectations.
-
-### API development
+### Troubleshoot
 
 ```bash
-npm run dev:api
+npm run cervel:doctor
 ```
 
-### Local Node CLI
+For requirements, lifecycle behavior, first capture/question/Trace, persistence, verification, stopping, reset guidance, and troubleshooting, see **[`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md)**.
 
-```bash
-npm run cervel
-```
-
-### Database
-
-The developer bootstrap normally owns local database startup, migration, and bootstrap. These lower-level commands remain available for focused development:
-
-```bash
-npm run db:migrate
-npm run db:bootstrap
-```
-
-The default local configuration is documented in [`.env.example`](.env.example). Do not commit real credentials or provider secrets.
+Lower-level lifecycle commands and implementation contracts remain documented under [`docs/`](docs/).
 
 ## Verification
 
@@ -208,27 +169,7 @@ npm run cervel:verify
 
 It derives the developer Vault, Local Node URL, runtime identity, and API credential from bootstrap state and the encrypted Vault boundary automatically.
 
-The repository also includes lower-level contract, runtime, integration, and alpha-path test suites. Useful entry points include:
-
-```bash
-npm test
-npm run test:contracts
-npm run test:ckuri
-npm run test:vault
-npm run test:desktop
-npm run test:golden-path
-npm run test:intelligence-gateway
-npm run test:knowledge-compiler
-npm run test:external-gateway
-npm run test:semantic-kernel
-npm run test:corpus-engine
-npm run test:life-corpus
-npm run test:enterprise-corpus
-npm run test:corpus-demo
-npm run alpha:golden-path
-```
-
-Additional smoke scripts exercise semantic-kernel, corpus-engine, Life Corpus, Enterprise Corpus, and production paths. Passing tests establish the behavior covered by those tests; they are not a claim of general production readiness.
+The repository also includes lower-level contract, runtime, integration, and alpha-path test suites. Passing tests establish the behavior covered by those tests; they are not a claim of general production readiness. See [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the normal developer path and [`docs/DEVELOPER_VERIFY.md`](docs/DEVELOPER_VERIFY.md) for the detailed verification contract.
 
 ## Repository map
 

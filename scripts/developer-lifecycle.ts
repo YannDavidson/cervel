@@ -1,13 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, parse, relative, resolve } from "node:path";
 
 const action = process.argv[2];
-const repoRoot = process.cwd();
+const repoRoot = resolve(process.cwd());
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const vaultRoot = resolve(process.env.CERVEL_DEV_VAULT ?? join(homedir(), ".cervel", "vaults", "developer"));
-const stateRoot = resolve(process.env.CERVEL_DEV_STATE_DIR ?? join(homedir(), ".cervel", "developer"));
+const cervelHome = resolve(join(homedir(), ".cervel"));
+const vaultRoot = resolve(process.env.CERVEL_DEV_VAULT ?? join(cervelHome, "vaults", "developer"));
+const stateRoot = resolve(process.env.CERVEL_DEV_STATE_DIR ?? join(cervelHome, "developer"));
 const passphrasePath = join(stateRoot, "bootstrap-passphrase");
 const setupStatePath = join(stateRoot, "setup.json");
 const localUrl = `http://127.0.0.1:${process.env.CERVEL_DEV_PORT ?? "8787"}`;
@@ -28,6 +29,29 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv, capture = 
   });
   if (result.error) fail(`${command} could not be executed: ${result.error.message}`);
   return result;
+}
+
+function isInside(parent: string, candidate: string): boolean {
+  const rel = relative(parent, candidate);
+  return rel !== "" && !rel.startsWith("..") && !resolve(parent, rel).startsWith(`${parse(parent).root}..`);
+}
+
+function assertSafeResetPath(label: string, candidate: string) {
+  const root = parse(candidate).root;
+  const home = resolve(homedir());
+  const forbidden = new Set([root, home, repoRoot, dirname(repoRoot)]);
+  if (forbidden.has(candidate)) fail(`Refusing reset: ${label} resolves to protected path ${candidate}.`);
+  if (!isInside(cervelHome, candidate)) {
+    fail(`Refusing reset: ${label} must be a child of the CERVEL developer root ${cervelHome}; got ${candidate}.`);
+  }
+}
+
+function assertSafeResetRoots() {
+  assertSafeResetPath("CERVEL_DEV_VAULT", vaultRoot);
+  assertSafeResetPath("CERVEL_DEV_STATE_DIR", stateRoot);
+  if (vaultRoot === stateRoot || isInside(vaultRoot, stateRoot) || isInside(stateRoot, vaultRoot)) {
+    fail("Refusing reset: developer Vault and orchestration state roots must be distinct, non-nested paths.");
+  }
 }
 
 async function developerPassphrase(): Promise<string | undefined> {
@@ -67,6 +91,7 @@ function resetConfirmed(): boolean {
 
 async function reset() {
   console.log("CERVEL Developer Reset\n");
+  assertSafeResetRoots();
   if (!resetConfirmed()) {
     console.error("Reset is destructive: it removes the configured developer Vault, captured local knowledge in that Vault, and developer orchestration state.");
     console.error("No data was removed.");

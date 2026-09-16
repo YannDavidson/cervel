@@ -7,6 +7,7 @@ on:
       - 'packages/shared-experience/**'
       - 'tests/shared-experience/**'
       - 'docs/SHARED_CERVEL_EXPERIENCE.md'
+      - 'docs/CERVEL_DESIGN_SYSTEM.md'
       - '.github/workflows/shared-experience.yml'
       - 'package.json'
   push:
@@ -15,6 +16,7 @@ on:
       - 'packages/shared-experience/**'
       - 'tests/shared-experience/**'
       - 'docs/SHARED_CERVEL_EXPERIENCE.md'
+      - 'docs/CERVEL_DESIGN_SYSTEM.md'
       - '.github/workflows/shared-experience.yml'
       - 'package.json'
 
@@ -31,7 +33,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Shared experience ownership contract
+      - name: Verify canonical vendored CERVEL logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset='packages/shared-experience/assets/brand/cervel-logo.png'
+          test -f "$asset"
+          test "$(wc -c < "$asset" | tr -d ' ')" = '852781'
+          printf '%s  %s\n' '18dc78ba39e85b0db6a27c107e86382f42f8e4d67f41e1a3afbadebbbaed0f13' "$asset" | sha256sum --check --strict
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+          p = Path('packages/shared-experience/assets/brand/cervel-logo.png')
+          b = p.read_bytes()
+          assert b[:8] == b'\x89PNG\r\n\x1a\n', 'brand asset is not a PNG'
+          assert struct.unpack('>II', b[16:24]) == (1254, 1254), 'unexpected canonical logo dimensions'
+          PY
+      - name: Shared experience and design-system contracts
         run: npm run test:shared-experience -- --runInBand
       - name: Build
         run: npm run build

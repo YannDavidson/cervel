@@ -1,0 +1,41 @@
+name: Ask CERVEL Answer Boundary
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/answer-boundary.ts'
+      - 'apps/api/src/model-adapters.ts'
+      - 'apps/api/src/semantic-reasoning.ts'
+      - 'tests/reasoning-boundary/**'
+      - '.github/workflows/reasoning-boundary.yml'
+      - 'package.json'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/src/answer-boundary.ts'
+      - 'apps/api/src/model-adapters.ts'
+      - 'apps/api/src/semantic-reasoning.ts'
+      - 'tests/reasoning-boundary/**'
+      - '.github/workflows/reasoning-boundary.yml'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Adversarial answer/evidence boundary regression
+        run: npm run test:reasoning-boundary -- --runInBand
+      - name: Build
+        run: npm run build
+      - name: Existing reasoning and golden-path regressions
+        run: npm run test:golden-path -- --runInBand

@@ -17,35 +17,18 @@ on:
       - '.github/workflows/dependency-security.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - name: Regenerate lockfile for dependency remediation
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Commit deterministic lockfile
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            echo 'Lockfile already synchronized.'
-            exit 0
-          fi
-          git config user.name 'Yann Davidson'
-          git config user.email '30988886+YannDavidson@users.noreply.github.com'
-          git add package-lock.json
-          git commit -s -m 'fix: lock patched dependency graph'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-      - name: Install with locked dependency graph
+      - name: Install locked dependency graph
         run: npm ci
       - name: Verify pinned security contract
         run: npm run test:dependency-security

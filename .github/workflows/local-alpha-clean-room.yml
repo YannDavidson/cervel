@@ -1,0 +1,124 @@
+name: CERVEL Clean-Room Local Alpha
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-alpha-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-alpha:
+    name: clean-room / local-alpha
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CERVEL_DEV_VAULT: /tmp/cervel-local-alpha/vault
+      CERVEL_DEV_STATE_DIR: /tmp/cervel-local-alpha/state
+      CERVEL_DEV_PORT: "8787"
+      CERVEL_DEV_DB_PORT: "55432"
+
+    steps:
+      - name: Checkout repository from zero
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Assert zero CERVEL state
+        shell: bash
+        run: |
+          test ! -e "$CERVEL_DEV_VAULT/vault.json"
+          test ! -e "$CERVEL_DEV_STATE_DIR/setup.json"
+          test ! -e "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase"
+          test ! -e .env
+
+      - name: Start Docker dependencies
+        run: |
+          docker compose up -d postgres minio
+          for i in {1..30}; do
+            if docker compose exec -T postgres pg_isready -U cervel -d cervel >/dev/null 2>&1 && \
+               curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose ps
+          docker compose logs postgres minio
+          exit 1
+
+      - name: Bootstrap CERVEL from zero
+        run: npm run cervel:setup
+
+      - name: Verify bootstrap readiness
+        run: |
+          test -f "$CERVEL_DEV_STATE_DIR/setup.json"
+          test -f "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase"
+          curl --fail --silent --show-error http://127.0.0.1:8787/ready | jq -e '.ok == true'
+
+      - name: Build CERVEL
+        run: npm run build
+
+      - name: Run test suite
+        run: npm test -- --runInBand
+
+      - name: Run developer golden path
+        run: npm run cervel:verify
+
+      - name: Verify golden-path evidence
+        run: |
+          REPORT="reports/golden-path/developer-verify.json"
+          test -f "$REPORT"
+          jq -e '.checks.vault_created.status == "passed"' "$REPORT"
+          jq -e '.checks.node_ready.status == "passed"' "$REPORT"
+          jq -e '.checks.retrieval.status == "passed"' "$REPORT"
+          jq -e '.checks.cited_answer.status == "passed"' "$REPORT"
+          jq -e '.checks.trace_complete.status == "passed"' "$REPORT"
+          jq -e '.checks.intelligence_routing.status == "passed"' "$REPORT"
+          jq -e '.checks.sync_convergence.status == "passed"' "$REPORT"
+          jq -e '.checks.revocation.status == "passed"' "$REPORT"
+
+      - name: Verify repository hygiene
+        run: |
+          test -f .env
+          git check-ignore -q .env
+          test ! -e ./bootstrap-passphrase
+          test ! -e ./setup.json
+          if git status --porcelain --untracked-files=all | grep -E 'bootstrap-passphrase|setup\.json'; then
+            echo "Developer secret/state material appeared inside repository"
+            exit 1
+          fi
+
+      - name: Shutdown and verify cleanup
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -f "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase" ] && [ -f "$CERVEL_DEV_VAULT/vault.json" ]; then
+            CERVEL_VAULT_PASSPHRASE="$(cat "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase")" \
+              npm run --silent cervel -- lock --vault "$CERVEL_DEV_VAULT"
+          fi
+          docker compose down -v --remove-orphans
+          docker compose ps -q | grep -q . && {
+            echo "Docker Compose resources still running after cleanup"
+            docker compose ps
+            exit 1
+          }
+          if curl -fsS http://127.0.0.1:8787/ready >/dev/null 2>&1; then
+            echo "Local Node still responds after shutdown"
+            exit 1
+          fi
+          exit 0

@@ -34,11 +34,16 @@ describe("PR #77 — Shared CERVEL Experience Foundation", () => {
 });
 
 describe("PR #78 — Design System / Branding / Application Shell", () => {
-  test("brand identity uses the supplied logo as provenance but forbids runtime hotlinking", () => {
+  test("brand identity pins the approved local logo and forbids runtime hotlinking", () => {
     expect(CERVEL_BRAND.name).toBe("CERVEL");
     expect(CERVEL_BRAND.logo.source).toBe("https://i.postimg.cc/3JTRqdvz/Chat-GPT-Image-Aug-24-2026-04-48-31-PM.png");
-    expect(CERVEL_BRAND.logo.asset).toBe("brand/cervel-mark.png");
+    expect(CERVEL_BRAND.logo.asset).toBe("packages/shared-experience/assets/brand/cervel-logo.png");
+    expect(CERVEL_BRAND.logo.sha256).toBe("18dc78ba39e85b0db6a27c107e86382f42f8e4d67f41e1a3afbadebbbaed0f13");
+    expect(CERVEL_BRAND.logo.bytes).toBe(852781);
+    expect(CERVEL_BRAND.logo.width).toBe(1254);
+    expect(CERVEL_BRAND.logo.height).toBe(1254);
     expect(CERVEL_BRAND.logo.policy).toBe("vendored-no-runtime-hotlink");
+    expect(() => assertApplicationShellBoundary()).not.toThrow();
   });
 
   test("design tokens provide typography spacing and light/dark themes", () => {

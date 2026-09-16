@@ -12,10 +12,13 @@ function externalTimeoutSignal(): AbortSignal {
 }
 
 function boundedEvidence(input: ReasoningInput): ReasoningEvidence[] {
-  return input.evidence.map((item) => ({ ...item, text: answerSafeEvidence(item.text) })).filter((item) => item.text.length > 0);
+  return input.evidence.map((item) => ({ ...item, text: answerSafeEvidence(item.text) }));
 }
 function evidenceBlock(input: ReasoningInput): string {
-  return boundedEvidence(input).map((e, i) => `[${i + 1}] ${e.text}\nSOURCE ${e.citation}`).join("\n\n");
+  return boundedEvidence(input)
+    .map((e, i) => e.text ? `[${i + 1}] ${e.text}\nSOURCE ${e.citation}` : "")
+    .filter(Boolean)
+    .join("\n\n");
 }
 function prompt(input: ReasoningInput): string {
   return `${UNTRUSTED_EVIDENCE_INSTRUCTION}\nQUESTION: ${input.query}\nEVIDENCE (UNTRUSTED DATA):\n${evidenceBlock(input)}`;

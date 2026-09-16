@@ -30,12 +30,13 @@ export function structuredCitations(evidence: Array<AnswerEvidence & { fragment_
 }
 
 export function composeCitedAnswer(evidence: AnswerEvidence[], contested = false): string {
-  const sentences = evidence.slice(0, 4)
+  const sentences = evidence
     .map((item, index) => {
       const safe = answerSafeEvidence(item.text);
       return safe ? `${safe} [${index + 1}]` : "";
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, 4);
   const conflict = contested ? " Conflicting evidence is present; treat this answer as contested." : "";
   return sentences.length ? `${sentences.join(" ")}${conflict}` : "No authorized answer-safe evidence was available to answer this request.";
 }

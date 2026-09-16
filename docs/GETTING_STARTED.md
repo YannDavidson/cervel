@@ -123,18 +123,15 @@ For the detailed verification contract, see [`DEVELOPER_VERIFY.md`](DEVELOPER_VE
 
 ## 11. Stop CERVEL
 
-When `npm run cervel:dev` is in the foreground, `Ctrl+C` stops the development launcher and propagates the termination signal to the Desktop child process.
-
-Important lifecycle detail: the launcher does **not** currently promise full teardown of setup-owned infrastructure. The Local Node and its Vault-scoped PostgreSQL container may remain available after the launcher exits.
-
-To explicitly lock the default developer Vault and stop its Local Node/database lifecycle, provide the Vault passphrase and use the Local Node `lock` command. For a bootstrap-generated developer passphrase on macOS/Linux:
+Use the canonical non-destructive stop command when you want the setup-owned local runtime shut down while preserving the developer Vault and orchestration state:
 
 ```bash
-CERVEL_VAULT_PASSPHRASE="$(cat ~/.cervel/developer/bootstrap-passphrase)" \
-  npm run --silent cervel -- lock --vault ~/.cervel/vaults/developer
+npm run cervel:stop
 ```
 
-If you supplied `CERVEL_VAULT_PASSPHRASE` yourself, use that value instead. Do not paste or commit Vault secrets into repository files.
+`cervel:stop` resolves the bootstrap-generated developer passphrase automatically when available, locks the configured developer Vault, stops its Local Node and Vault-scoped PostgreSQL container, and verifies that the Local Node no longer reports ready. The Vault, captured knowledge, database files, identity, and developer setup state remain on disk for the next start.
+
+When `npm run cervel:dev` is in the foreground, `Ctrl+C` still stops the development launcher/Desktop child. Use `npm run cervel:stop` when you also want deterministic teardown of the setup-owned Local Node/database lifecycle.
 
 ## 12. Restart CERVEL
 
@@ -144,15 +141,15 @@ Restart with the same canonical command:
 npm run cervel:dev
 ```
 
-The launcher and bootstrap are designed to reuse an existing developer Vault and healthy Local Node instead of recreating identity or knowledge state.
+The launcher and bootstrap reuse an existing developer Vault instead of recreating identity or knowledge state.
 
 ## 13. Persistence across restarts
 
-The developer Vault is durable state. Restarting the launcher is not intended to recreate the Vault or erase captured knowledge.
+The developer Vault is durable state. Stopping or restarting the launcher is not intended to recreate the Vault or erase captured knowledge.
 
 The bootstrap reuses the existing Vault, database state, node identity, workspace, principal, and primary storage bootstrap where present. This persistence is part of the local CERVEL development path; reasoning providers remain replaceable dependencies rather than owners of the corpus.
 
-If persistence behavior appears inconsistent, do not delete local state first. Run:
+If persistence behavior appears inconsistent, do not reset local state first. Run:
 
 ```bash
 npm run cervel:doctor
@@ -162,17 +159,37 @@ and inspect the reported Vault, bootstrap, database, port, and Local Node state.
 
 ## 14. Reset the development environment
 
-There is intentionally no canonical one-command destructive reset in the current alpha. `cervel:setup` is idempotent and should normally repair/reuse developer state rather than erase it.
-
-If you truly need a clean environment, first lock the Vault as described above, then remove only the disposable developer Vault and developer orchestration state that you intentionally want to recreate. Treat this as destructive: captured local knowledge in that developer Vault can be lost.
-
-After intentional cleanup, rerun:
+Use reset only when you intentionally want to return the configured developer environment to zero:
 
 ```bash
-npm run cervel:dev
+npm run cervel:reset
 ```
 
-Do not turn manual deletion into a routine troubleshooting step. Prefer `cervel:doctor` first.
+The unconfirmed command is safe: it prints the destructive scope and removes nothing. Reset requires explicit confirmation because it deletes the configured developer Vault—including captured local knowledge in that Vault—and developer orchestration state.
+
+To confirm interactively from a terminal, rerun:
+
+```bash
+npm run cervel:reset -- --yes
+```
+
+For non-interactive clean-room CI, explicit confirmation can be supplied without a prompt:
+
+```bash
+CERVEL_RESET_CONFIRM=DELETE-DEVELOPER-STATE npm run cervel:reset
+```
+
+Reset first stops the configured developer runtime, then removes only the configured developer Vault root and developer orchestration state root. It does not delete repository files or arbitrary CERVEL Vaults elsewhere on the machine.
+
+A repeatable clean-room lifecycle is therefore:
+
+```bash
+npm run cervel:reset -- --yes
+npm run cervel:setup
+npm run cervel:verify
+```
+
+Treat reset as a debugging, test, and clean-room tool—not routine troubleshooting. Prefer `npm run cervel:doctor` first when the goal is diagnosis rather than deletion.
 
 ## 15. Troubleshooting
 
@@ -203,17 +220,19 @@ Normal development should begin with the canonical launcher:
 npm run cervel:dev
 ```
 
-Lower-level commands remain available when you need a specific lifecycle stage:
+Lifecycle commands are deliberately explicit:
 
 ```bash
 npm run cervel:setup     # bootstrap or reuse the local developer runtime
 npm run cervel:doctor    # read-only diagnostics
 npm run cervel:verify    # run the developer alpha golden path
+npm run cervel:stop      # stop runtime while preserving developer state
+npm run cervel:reset     # destructive reset; requires explicit confirmation
 npm run desktop:dev      # launch Desktop against a prepared runtime
 npm run cervel           # access the lower-level Local Node CLI
 ```
 
-The lower-level commands are escape hatches for focused development and diagnostics, not prerequisites developers should have to discover before starting CERVEL.
+The lower-level commands remain available for focused development and diagnostics, while `stop` and `reset` make teardown semantics explicit and repeatable.
 
 ## Related documentation
 

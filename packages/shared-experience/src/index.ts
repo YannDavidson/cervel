@@ -45,13 +45,17 @@ export const CERVEL_PRIMARY_NAVIGATION: readonly CervelSurfaceId[] = [
   "home", "vault-explorer", "corpus", "capture", "ask", "search", "trace", "graph"
 ] as const;
 
-/** Canonical CERVEL brand identity. The remote URL is provenance only; clients ship a vendored asset. */
+/** Canonical CERVEL brand identity. Source is provenance only; runtime uses the pinned vendored asset. */
 export const CERVEL_BRAND = {
   name: "CERVEL",
   descriptor: "Sovereign Knowledge",
   thesis: "Persistent Knowledge Infrastructure for humans, AI, and machines. Sovereign by design.",
   logo: {
-    asset: "brand/cervel-mark.png",
+    asset: "packages/shared-experience/assets/brand/cervel-logo.png",
+    sha256: "18dc78ba39e85b0db6a27c107e86382f42f8e4d67f41e1a3afbadebbbaed0f13",
+    bytes: 852781,
+    width: 1254,
+    height: 1254,
     source: "https://i.postimg.cc/3JTRqdvz/Chat-GPT-Image-Aug-24-2026-04-48-31-PM.png",
     policy: "vendored-no-runtime-hotlink"
   }
@@ -95,7 +99,6 @@ export const CERVEL_APPLICATION_SHELL = {
   }
 } as const;
 
-// Compatibility alias retained for PR #77 consumers while the richer design system becomes canonical.
 export const CERVEL_EXPERIENCE_TOKENS = {
   layout: { sidebar: "experience.sidebar", workspace: "experience.workspace", inspector: "experience.inspector" },
   state: { healthy: "state.healthy", warning: "state.warning", private: "state.private", sealed: "state.sealed" },
@@ -127,6 +130,7 @@ export function assertSharedExperienceBoundary(): void {
 
 export function assertApplicationShellBoundary(): void {
   if (CERVEL_BRAND.logo.policy !== "vendored-no-runtime-hotlink") throw new Error("CERVEL brand asset must be local at runtime");
+  if (/^https?:\/\//i.test(CERVEL_BRAND.logo.asset)) throw new Error("CERVEL runtime brand asset must not be remote");
   if (CERVEL_APPLICATION_SHELL.globalSearch.surface !== "search") throw new Error("Global search must route through the shared retrieval surface");
   if (!CERVEL_APPLICATION_SHELL.inspectorTabs.includes("activity") || !CERVEL_APPLICATION_SHELL.inspectorTabs.includes("properties")) {
     throw new Error("Shared inspector must expose Activity and Properties");

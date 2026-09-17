@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { withTransaction } from "./db";
 import { assertPrincipalInNode } from "./access";
+import { listVaultExplorerObjects, loadVaultExplorer, loadVaultExplorerObject } from "./vault-explorer";
 
 function principal(request: FastifyRequest): string {
   const value=request.headers["x-cervel-principal-id"];
@@ -22,6 +23,18 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
       client.query(`SELECT pg_database_size(current_database())::text AS bytes`)
     ]);
     return {node:node.rows[0],counts:{objects:objects.rows[0].count,artifacts:artifacts.rows[0].count,fragments:fragments.rows[0].count,answers:answers.rows[0].count},database_bytes:size.rows[0].bytes,activity:activity.rows};
+  }));
+  app.get("/v1/local/explorer",async(request)=>withTransaction(async client=>{
+    const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);
+    return loadVaultExplorer(client,{nodeId:node_id,workspaceId:workspace_id,principalId});
+  }));
+  app.get("/v1/local/explorer/objects",async(request)=>withTransaction(async client=>{
+    const principalId=principal(request),{node_id,workspace_id,type,q,corpus_key,mega_tab,limit}=request.query as {node_id?:string;workspace_id?:string;type?:string;q?:string;corpus_key?:"life"|"enterprise";mega_tab?:string;limit?:string};if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);
+    return listVaultExplorerObjects(client,{nodeId:node_id,workspaceId:workspace_id,principalId,type,query:q,corpusKey:corpus_key,megaTab:mega_tab,limit:limit?Number(limit):100});
+  }));
+  app.get("/v1/local/explorer/objects/:id",async(request)=>withTransaction(async client=>{
+    const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};const {id}=request.params as {id:string};if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);
+    return loadVaultExplorerObject(client,{nodeId:node_id,workspaceId:workspace_id,principalId,ckoId:id});
   }));
   app.get("/v1/local/objects",async(request)=>withTransaction(async client=>{
     const principalId=principal(request),{node_id,type,q}=request.query as {node_id?:string;type?:string;q?:string};if(!node_id)throw Object.assign(new Error("NODE_ID_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);

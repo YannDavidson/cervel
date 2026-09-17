@@ -18,7 +18,7 @@ describe("PR #82 — Vault Explorer Convergence", () => {
   });
 
   test("semantic navigation preserves canonical identity and permission boundaries", () => {
-    expect(runtime).toContain("COUNT");
+    expect(runtime).toMatch(/count\(DISTINCT\s+(?:v\.)?cko_id\)/i);
     expect(runtime).toContain("enterprise_tenant_members");
     expect(runtime).toContain("life_sealed_access_sessions");
     expect(runtime).toContain('duplication_policy: "canonical-cko-references-only"');

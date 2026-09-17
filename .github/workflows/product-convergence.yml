@@ -1,0 +1,40 @@
+name: CERVEL Desktop Product Convergence
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'scripts/developer-dev.ts'
+      - 'apps/api/src/local-node-routes.ts'
+      - 'apps/desktop-tauri/**'
+      - 'tests/developer-dev/**'
+      - 'tests/product-convergence/**'
+      - 'docs/DESKTOP_PRODUCT_CONVERGENCE.md'
+      - '.github/workflows/product-convergence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Desktop product convergence contracts
+        run: npx jest tests/developer-dev tests/product-convergence --runInBand
+      - name: TypeScript build
+        run: npm run build
+
+  tauri-native:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check canonical Tauri bridge
+        working-directory: apps/desktop-tauri/src-tauri
+        run: cargo check

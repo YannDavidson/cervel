@@ -1,0 +1,37 @@
+name: CERVEL Intelligence Experience Convergence
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/local-node-routes.ts'
+      - 'apps/desktop-tauri/**'
+      - 'tests/intelligence-convergence/**'
+      - 'docs/ASK_SEARCH_TRACE_GRAPH_CONVERGENCE.md'
+      - '.github/workflows/intelligence-convergence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convergence-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Ask Search Trace Graph contracts
+        run: npx jest tests/intelligence-convergence --runInBand
+      - name: TypeScript build
+        run: npm run build
+
+  tauri-bridge:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check Tauri native bridge
+        working-directory: apps/desktop-tauri/src-tauri
+        run: cargo check

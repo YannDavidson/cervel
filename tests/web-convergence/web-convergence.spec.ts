@@ -5,6 +5,7 @@ import {
   surfacesForClient,
 } from "../../packages/shared-experience/src";
 import { assertWebConvergenceBoundary, describeWebRuntime } from "../../apps/web/src/runtime";
+import { recoveryExperience } from "../../apps/web/src/recovery-ui";
 
 describe("web deployment convergence",()=>{
   test("web uses the canonical shared product surfaces in every mode",()=>{
@@ -38,10 +39,15 @@ describe("web deployment convergence",()=>{
     assertRuntimeCapabilityBoundary();
   });
 
-  test("offline and recovery are shared runtime states",()=>{
+  test("offline and recovery keep the canonical shell visible",()=>{
     expect(recoveryStateForRuntime({online:false,apiReachable:false})).toBe("offline");
     expect(recoveryStateForRuntime({online:true,apiReachable:false})).toBe("degraded");
     expect(recoveryStateForRuntime({online:true,apiReachable:true,recovering:true})).toBe("recovering");
-    expect(describeWebRuntime({mode:"cloud",online:false,apiReachable:false}).recoveryState).toBe("offline");
+    const runtime=describeWebRuntime({mode:"cloud",online:false,apiReachable:false});
+    const recovery=recoveryExperience(runtime.recoveryState,runtime.capabilities);
+    expect(recovery.productShellVisible).toBe(true);
+    expect(recovery.canReadCachedKnowledge).toBe(true);
+    expect(recovery.canQueueWrites).toBe(true);
+    expect(recovery.retryVisible).toBe(true);
   });
 });

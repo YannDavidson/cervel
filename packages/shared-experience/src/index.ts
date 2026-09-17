@@ -1,3 +1,5 @@
+export * from "./runtime-capabilities";
+
 export type CervelSurfaceId =
   | "home"
   | "vault-explorer"

@@ -1,12 +1,102 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CERVEL</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="explorer.css"><link rel="stylesheet" href="intelligence-convergence.css"><link rel="stylesheet" href="product-convergence.css"></head><body><div class="app-shell"><aside class="sidebar"><div class="brand"><div class="mark">C</div><div><strong>CERVEL</strong><span>Persistent Knowledge Infrastructure</span></div></div><nav><button class="nav active" data-view="home">Home</button><p>KNOWLEDGE</p><button class="nav" data-view="vault">Vault</button><button class="nav" data-view="corpora">Corpus Explorer</button><button class="nav" data-view="search">Search</button><button class="nav" data-view="graph">Graph</button><button class="nav" data-view="capture">Capture</button><p>INTELLIGENCE</p><button class="nav" data-view="cortex">Cortex</button><button class="nav" data-view="trace">Trace</button><button class="nav" data-view="deliverables">Deliverables</button><p>SYSTEM</p><button class="nav" data-view="models">Models</button><button class="nav" data-view="connections">Connections</button></nav><div class="node-card"><span id="node-dot" class="dot"></span><div><strong id="node-label">Checking Local Node…</strong><small id="node-endpoint">127.0.0.1</small></div></div></aside><main><header><div><small>CANONICAL CERVEL DESKTOP</small><h1 id="view-title">Your knowledge, persistent.</h1></div><div class="header-actions"><button id="capture-btn">＋ Capture</button><button class="primary" id="node-btn">Start Node</button></div></header>
-<section id="home" class="view active"><div class="hero"><span class="eyebrow">CERVEL DESKTOP · CANONICAL ALPHA</span><h2>One persistent semantic world.<br><em>Many intelligences.</em></h2><p>Your encrypted Vault remains the durable source of truth while models, agents and applications change around it.</p><div class="hero-actions"><button class="primary" data-go="vault">Open Vault</button><button data-go="capture">Capture knowledge</button></div></div><div class="status-grid"><article><small>VAULT</small><strong id="vault-path">Local</strong><span>Sovereign storage</span></article><article><small>CAPTURE</small><strong>Universal</strong><span>Notes · files · browser</span></article><article><small>CORTEX</small><strong>Ask</strong><span>Permission-aware reasoning</span></article><article><small>TRACE</small><strong>On</strong><span>Provenance & auditability</span></article></div></section>
-<section id="vault" class="view"><div class="section-head"><div><small>PERSISTENT STORAGE</small><h2>Vault Explorer</h2></div><button data-go="capture">＋ Add knowledge</button></div><div class="explorer-grid"><aside class="tree panel"><div class="explorer-heading"><small>VAULTS</small><span id="explorer-vault-count"></span></div><div id="vault-catalog" class="explorer-tree-group"><div class="workspace-loading">Discovering Vaults…</div></div><div class="explorer-heading"><small>KNOWLEDGE</small></div><div id="explorer-collections" class="explorer-tree-group"></div><div class="explorer-heading"><small>SEMANTIC VIEWS</small></div><div id="explorer-semantic" class="explorer-tree-group"></div></aside><div class="explorer-center"><div class="searchbox compact">⌕ <input id="vault-search" placeholder="Search your Vault…"></div><div id="explorer-context" class="explorer-context">All canonical knowledge</div><div id="vault-items" class="knowledge-list"><div class="workspace-empty">Open or unlock your Vault to browse persistent knowledge.</div></div></div><aside class="panel inspector"><div class="inspector-tabs"><button class="active" data-inspector="activity">Activity</button><button data-inspector="properties">Properties</button></div><div id="inspector-activity" class="inspector-pane active"><div class="workspace-empty">Select a CKO to inspect real provenance activity.</div></div><div id="inspector-properties" class="inspector-pane"><div class="workspace-empty">Select a CKO to inspect canonical object state.</div></div></aside></div></section>
-<section id="corpora" class="view"><div class="section-head"><div><small>SEMANTIC ARCHITECTURE</small><h2>Corpus Explorer</h2></div></div><div class="corpus-grid"><article><span>LIFE</span><h3>Life Corpus</h3><p>Personal knowledge, projects, memory, relationships and goals.</p></article><article><span>ENTERPRISE</span><h3>Enterprise Corpus</h3><p>Institutional knowledge, operations, products, strategy and agents.</p></article></div></section>
-<section id="search" class="view"><div class="section-head"><div><small>AUTHORIZED RETRIEVAL</small><h2>Search</h2></div><span class="route-pill">Hybrid retrieval · Local Node</span></div><div class="searchbox">⌕ <input id="global-search" placeholder="Search across authorized persistent knowledge…"></div><div id="search-results" class="search-results panel"><div class="workspace-empty">Search meaning, not filenames. Results come from the canonical permission-aware retrieval pipeline.</div></div></section>
-<section id="graph" class="view"><div class="section-head"><div><small>AUTHORIZED RELATIONSHIPS</small><h2>Knowledge Graph</h2></div><button id="refresh-graph">Refresh</button></div><div class="graph-layout"><div id="graph-canvas" class="panel graph-canvas"><div class="workspace-empty">Load the graph to inspect relationships backed by visible claim evidence.</div></div><aside class="panel graph-inspector"><small>GRAPH BOUNDARY</small><h3>Evidence-scoped projection</h3><p>Only workspace relationships backed by claim evidence are projected into this view.</p><div id="graph-stats" class="graph-stats"></div><div id="graph-edge-detail" class="graph-edge-detail"></div></aside></div></section>
-<section id="capture" class="view"><div class="section-head"><div><small>UNIVERSAL INPUT</small><h2>Capture</h2></div><span id="capture-receipt"></span></div><div class="capture-workspace"><div class="panel note-composer"><small>NOTE</small><input id="note-title" placeholder="Title"><textarea id="note-body" placeholder="Write something worth remembering…"></textarea><div><span>⌘↵ to save</span><button class="primary" id="save-note">Save to Vault</button></div></div><button class="drop-zone" id="drop-zone"><strong>Drop files into CERVEL</strong><span>Documents, text, images and supported artifacts become persistent knowledge.</span><b id="choose-files">Choose files</b></button></div></section>
-<section id="cortex" class="view"><div class="section-head"><div><small>KNOWLEDGE INTELLIGENCE</small><h2>Ask CERVEL</h2></div><span id="cortex-route" class="route-pill">Routing through CERVEL</span></div><div class="ask-grid"><div class="panel ask-panel"><textarea id="cortex-query" placeholder="Ask your persistent knowledge…"></textarea><div class="ask-actions"><span>Authorized context is assembled before any model is called.</span><button class="primary" id="ask-cervel">Ask CERVEL</button></div></div><aside class="panel intelligence-boundary"><small>INTELLIGENCE BOUNDARY</small><h3>Knowledge stays here.<br>Reasoning may happen there.</h3><p>Cortex resolves permissions, builds a context package, then routes to an eligible local or external intelligence provider.</p><div id="provider-summary" class="provider-summary">Unlock a Vault to inspect available intelligence.</div></aside></div><div id="cortex-answer" class="panel answer-panel"><div class="workspace-empty">Ask a question to reason across your authorized Vault knowledge.</div></div></section>
-<section id="trace" class="view"><div class="section-head"><div><small>PROVENANCE</small><h2>Trace</h2></div><button id="refresh-trace">Refresh</button></div><div id="trace-current" class="trace-current panel"><div class="workspace-empty">Ask CERVEL first, then inspect the answer lineage here.</div></div><div class="section-head trace-history-head"><div><small>INTELLIGENCE RECEIPTS</small><h3>Recent routing decisions</h3></div></div><div id="trace-receipts" class="receipt-list"></div></section>
-<section id="deliverables" class="view"><div class="section-head"><div><small>DELIVERABLES ENGINE</small><h2>Deliverables</h2></div><button id="refresh-deliverables">Refresh</button></div><p class="boundary">Deliverables are projections of canonical knowledge, not a second source of truth.</p><div id="deliverables-summary" class="product-summary"></div><div id="deliverables-list" class="deliverables-list panel"><div class="workspace-empty">Unlock a Vault to inspect persistent deliverables.</div></div></section>
-<section id="models" class="view"><div class="section-head"><div><small>INTELLIGENCE GATEWAY</small><h2>Models</h2></div></div><p class="boundary">Knowledge stays here. Reasoning may happen there.</p><div id="models-status" class="panel provider-summary">Open Cortex to inspect local and configured external providers.</div></section>
-<section id="connections" class="view"><div class="section-head"><div><small>AGENT GATEWAY · MCP · CAPTURE</small><h2>Connections</h2></div><button id="browser-pair">Register Browser Bridge</button></div><p class="boundary">Connections receive scoped access through the CERVEL gateway. Local Node credentials never enter the renderer.</p><div id="mcp-summary" class="panel product-summary"><div class="workspace-empty">Unlock a Vault to inspect MCP and gateway state.</div></div><div id="connections-list" class="connection-grid"></div></section></main></div><script src="app.js"></script><script src="workspace.js"></script><script src="intelligence.js"></script><script src="product-convergence.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CERVEL</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="explorer.css">
+  <link rel="stylesheet" href="intelligence-convergence.css">
+  <link rel="stylesheet" href="product-convergence.css">
+  <link rel="stylesheet" href="visual-convergence.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><img class="brand-logo" src="brand/cervel-logo.png" alt="CERVEL"><div><strong>CERVEL</strong><span>Sovereign Knowledge</span></div></div>
+    <div class="vault-switcher"><span class="vault-led"></span><div><strong id="home-vault-name">Local Vault</strong><small id="home-vault-meta">Encrypted · private by default</small></div><button type="button" data-view="vault" aria-label="Open Vault">⌄</button></div>
+    <nav>
+      <button class="nav active" data-view="home">Home</button>
+      <p>KNOWLEDGE</p>
+      <button class="nav" data-view="vault">Vault Explorer</button>
+      <button class="nav" data-view="corpora">Life & Enterprise</button>
+      <button class="nav" data-view="search">Search</button>
+      <button class="nav" data-view="graph">Graph</button>
+      <button class="nav" data-view="capture">Capture</button>
+      <p>INTELLIGENCE</p>
+      <button class="nav" data-view="cortex">Ask CERVEL</button>
+      <button class="nav" data-view="trace">Trace</button>
+      <button class="nav" data-view="deliverables">Deliverables</button>
+      <p>SYSTEM</p>
+      <button class="nav" data-view="models">Models</button>
+      <button class="nav" data-view="connections">Connections / MCP</button>
+    </nav>
+    <div class="node-card"><span id="node-dot" class="dot"></span><div><strong id="node-label">Checking Local Node…</strong><small id="node-endpoint">127.0.0.1</small></div></div>
+    <div class="sidebar-footer">CERVEL v0.1.0 · LOCAL-FIRST</div>
+  </aside>
+
+  <main>
+    <div class="desktop-topbar">
+      <div class="searchbox global-search">⌕ <input id="top-global-search" placeholder="Search your Vault…" aria-label="Search your Vault"></div>
+      <div class="topbar-spacer"></div>
+      <div id="home-runtime-pill" class="runtime-pill offline"><i></i><span>Local Node offline</span></div>
+      <div class="corpus-switch" aria-label="Home corpus preview"><button class="active" data-home-corpus="life">Life</button><button data-home-corpus="enterprise">Enterprise</button></div>
+      <button class="appearance-button" type="button" aria-label="Appearance">◐</button>
+      <button class="primary" id="capture-btn">＋ Add knowledge</button>
+    </div>
+
+    <header><div><small>CANONICAL CERVEL DESKTOP</small><h1 id="view-title">Your knowledge, persistent.</h1></div><div class="header-actions"><button class="primary" id="node-btn">Start Node</button></div></header>
+
+    <section id="home" class="view active">
+      <div class="home-grid">
+        <div class="home-main">
+          <div class="home-hero">
+            <div class="home-hero-copy">
+              <span class="home-kicker">Canonical CERVEL Desktop</span>
+              <h2>Your life, remembered<br><em>on your terms.</em></h2>
+              <p>Private memories, projects, work, learning and goals become useful semantic views while remaining encrypted, permission-aware and locally owned.</p>
+              <div class="hero-actions"><button class="primary" id="home-ask">✦ Ask CERVEL</button><button id="home-add-knowledge">＋ Add knowledge</button></div>
+            </div>
+            <div class="home-brand-lockup"><img src="brand/cervel-logo.png" alt=""><strong>CERVEL</strong><span>Sovereign Knowledge</span></div>
+          </div>
+
+          <div class="value-grid">
+            <article class="value-card"><span class="value-icon">⌑</span><div><strong>Local-first ownership</strong><span>Your Vault. Your device. Your control.</span></div></article>
+            <article class="value-card"><span class="value-icon">◇</span><div><strong>100% provenance</strong><span>Every grounded answer traces back to evidence.</span></div></article>
+            <article class="value-card"><span class="value-icon">✦</span><div><strong>Model independent</strong><span>Reasoning engines remain replaceable.</span></div></article>
+            <article class="value-card"><span class="value-icon">▱</span><div><strong>Zero duplication</strong><span>Semantic views reference canonical CKOs.</span></div></article>
+          </div>
+
+          <div class="home-explorer">
+            <div class="home-explorer-head"><div><strong>Vault Explorer</strong><span>Browse real canonical knowledge by semantic view.</span></div><div><button id="home-refresh">Refresh</button><button id="home-open-explorer">Open Explorer →</button></div></div>
+            <div class="home-corpus-tabs"><button class="active" data-home-corpus="life">● Life</button><button data-home-corpus="enterprise">● Enterprise</button></div>
+            <div id="home-semantic-preview" class="semantic-preview"><div class="activity-empty">Start the Local Node to load real semantic views.</div></div>
+          </div>
+          <div id="home-runtime-strip" class="home-runtime-strip"><strong>○</strong><span>Start the Local Node to load your real knowledge workspace.</span></div>
+        </div>
+        <aside class="home-rail">
+          <div class="home-rail-head"><button class="active" type="button">Activity</button><button type="button" data-view="vault">Properties</button></div>
+          <div class="home-rail-body"><div id="home-activity-feed" class="activity-feed"><div class="activity-empty">No runtime activity loaded yet.</div></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="vault" class="view"><div class="section-head"><div><small>PERSISTENT STORAGE</small><h2>Vault Explorer</h2></div><button data-go="capture">＋ Add knowledge</button></div><div class="explorer-grid"><aside class="tree panel"><div class="explorer-heading"><small>VAULTS</small><span id="explorer-vault-count"></span></div><div id="vault-catalog" class="explorer-tree-group"><div class="workspace-loading">Discovering Vaults…</div></div><div class="explorer-heading"><small>KNOWLEDGE</small></div><div id="explorer-collections" class="explorer-tree-group"></div><div class="explorer-heading"><small>SEMANTIC VIEWS</small></div><div id="explorer-semantic" class="explorer-tree-group"></div></aside><div class="explorer-center"><div class="searchbox compact">⌕ <input id="vault-search" placeholder="Search your Vault…"></div><div id="explorer-context" class="explorer-context">All canonical knowledge</div><div id="vault-items" class="knowledge-list"><div class="workspace-empty">Open or unlock your Vault to browse persistent knowledge.</div></div></div><aside class="panel inspector"><div class="inspector-tabs"><button class="active" data-inspector="activity">Activity</button><button data-inspector="properties">Properties</button></div><div id="inspector-activity" class="inspector-pane active"><div class="workspace-empty">Select a CKO to inspect real provenance activity.</div></div><div id="inspector-properties" class="inspector-pane"><div class="workspace-empty">Select a CKO to inspect canonical object state.</div></div></aside></div></section>
+    <section id="corpora" class="view"><div class="section-head"><div><small>SEMANTIC ARCHITECTURE</small><h2>Life & Enterprise</h2></div></div><div class="corpus-grid"><article><span>LIFE</span><h3>Life Corpus</h3><p>Personal knowledge, projects, memory, relationships and goals.</p></article><article><span>ENTERPRISE</span><h3>Enterprise Corpus</h3><p>Institutional knowledge, operations, products, strategy and agents.</p></article></div></section>
+    <section id="search" class="view"><div class="section-head"><div><small>AUTHORIZED RETRIEVAL</small><h2>Search</h2></div><span class="route-pill">Hybrid retrieval · Local Node</span></div><div class="searchbox">⌕ <input id="global-search" placeholder="Search across authorized persistent knowledge…"></div><div id="search-results" class="search-results panel"><div class="workspace-empty">Search meaning, not filenames. Results come from the canonical permission-aware retrieval pipeline.</div></div></section>
+    <section id="graph" class="view"><div class="section-head"><div><small>AUTHORIZED RELATIONSHIPS</small><h2>Knowledge Graph</h2></div><button id="refresh-graph">Refresh</button></div><div class="graph-layout"><div id="graph-canvas" class="panel graph-canvas"><div class="workspace-empty">Load the graph to inspect relationships backed by visible claim evidence.</div></div><aside class="panel graph-inspector"><small>GRAPH BOUNDARY</small><h3>Evidence-scoped projection</h3><p>Only workspace relationships backed by claim evidence are projected into this view.</p><div id="graph-stats" class="graph-stats"></div><div id="graph-edge-detail" class="graph-edge-detail"></div></aside></div></section>
+    <section id="capture" class="view"><div class="section-head"><div><small>UNIVERSAL INPUT</small><h2>Capture</h2></div><span id="capture-receipt"></span></div><div class="capture-workspace"><div class="panel note-composer"><small>NOTE</small><input id="note-title" placeholder="Title"><textarea id="note-body" placeholder="Write something worth remembering…"></textarea><div><span>⌘↵ to save</span><button class="primary" id="save-note">Save to Vault</button></div></div><button class="drop-zone" id="drop-zone"><strong>Drop files into CERVEL</strong><span>Documents, text, images and supported artifacts become persistent knowledge.</span><b id="choose-files">Choose files</b></button></div></section>
+    <section id="cortex" class="view"><div class="section-head"><div><small>KNOWLEDGE INTELLIGENCE</small><h2>Ask CERVEL</h2></div><span id="cortex-route" class="route-pill">Routing through CERVEL</span></div><div class="ask-grid"><div class="panel ask-panel"><textarea id="cortex-query" placeholder="Ask your persistent knowledge…"></textarea><div class="ask-actions"><span>Authorized context is assembled before any model is called.</span><button class="primary" id="ask-cervel">Ask CERVEL</button></div></div><aside class="panel intelligence-boundary"><small>INTELLIGENCE BOUNDARY</small><h3>Knowledge stays here.<br>Reasoning may happen there.</h3><p>Cortex resolves permissions, builds a context package, then routes to an eligible local or external intelligence provider.</p><div id="provider-summary" class="provider-summary">Unlock a Vault to inspect available intelligence.</div></aside></div><div id="cortex-answer" class="panel answer-panel"><div class="workspace-empty">Ask a question to reason across your authorized Vault knowledge.</div></div></section>
+    <section id="trace" class="view"><div class="section-head"><div><small>PROVENANCE</small><h2>Trace</h2></div><button id="refresh-trace">Refresh</button></div><div id="trace-current" class="trace-current panel"><div class="workspace-empty">Ask CERVEL first, then inspect the answer lineage here.</div></div><div class="section-head trace-history-head"><div><small>INTELLIGENCE RECEIPTS</small><h3>Recent routing decisions</h3></div></div><div id="trace-receipts" class="receipt-list"></div></section>
+    <section id="deliverables" class="view"><div class="section-head"><div><small>DELIVERABLES ENGINE</small><h2>Deliverables</h2></div><button id="refresh-deliverables">Refresh</button></div><p class="boundary">Deliverables are projections of canonical knowledge, not a second source of truth.</p><div id="deliverables-summary" class="product-summary"></div><div id="deliverables-list" class="deliverables-list panel"><div class="workspace-empty">Unlock a Vault to inspect persistent deliverables.</div></div></section>
+    <section id="models" class="view"><div class="section-head"><div><small>INTELLIGENCE GATEWAY</small><h2>Models</h2></div></div><p class="boundary">Knowledge stays here. Reasoning may happen there.</p><div id="models-status" class="panel provider-summary">Open Ask CERVEL to inspect local and configured external providers.</div></section>
+    <section id="connections" class="view"><div class="section-head"><div><small>AGENT GATEWAY · MCP · CAPTURE</small><h2>Connections</h2></div><button id="browser-pair">Register Browser Bridge</button></div><p class="boundary">Connections receive scoped access through the CERVEL gateway. Local Node credentials never enter the renderer.</p><div id="connection-node" hidden>Offline</div><div id="mcp-summary" class="panel product-summary"><div class="workspace-empty">Unlock a Vault to inspect MCP and gateway state.</div></div><div id="connections-list" class="connection-grid"></div></section>
+  </main>
+</div>
+<script src="app.js"></script>
+<script src="workspace.js"></script>
+<script src="intelligence.js"></script>
+<script src="product-convergence.js"></script>
+<script src="home-experience.js"></script>
+</body>
+</html>

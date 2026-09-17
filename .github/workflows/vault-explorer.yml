@@ -1,0 +1,36 @@
+name: CERVEL Vault Explorer
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/local-node-routes.ts'
+      - 'apps/api/src/vault-explorer.ts'
+      - 'apps/desktop-tauri/**'
+      - 'tests/vault-explorer/**'
+      - 'docs/VAULT_EXPLORER_CONVERGENCE.md'
+      - '.github/workflows/vault-explorer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  explorer-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Vault Explorer contracts
+        run: npx jest tests/vault-explorer --runInBand
+      - name: TypeScript build
+        run: npm run build
+
+  tauri-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check Tauri native bridge
+        run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml

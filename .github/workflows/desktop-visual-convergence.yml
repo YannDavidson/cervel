@@ -1,0 +1,51 @@
+name: CERVEL Canonical Desktop Visual Convergence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop-tauri/ui/**'
+      - 'scripts/prepare-tauri-ui.ts'
+      - 'packages/shared-experience/assets/brand/**'
+      - 'tests/desktop-visual-convergence/**'
+      - 'package.json'
+      - '.github/workflows/desktop-visual-convergence.yml'
+      - 'docs/CANONICAL_DESKTOP_VISUAL_CONVERGENCE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visual-contract:
+    name: visual convergence / contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx jest tests/desktop-visual-convergence --runInBand
+      - name: Prepare approved logo derivative
+        run: npm run prepare:desktop:ui
+      - name: Verify prepared logo is byte-identical to canonical asset
+        run: |
+          cmp packages/shared-experience/assets/brand/cervel-logo.png apps/desktop-tauri/ui/brand/cervel-logo.png
+          test "$(sha256sum apps/desktop-tauri/ui/brand/cervel-logo.png | cut -d' ' -f1)" = "18dc78ba39e85b0db6a27c107e86382f42f8e4d67f41e1a3afbadebbbaed0f13"
+      - run: npm run build
+
+  native-mac:
+    name: visual convergence / canonical Tauri macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run prepare:desktop:ui
+      - run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml

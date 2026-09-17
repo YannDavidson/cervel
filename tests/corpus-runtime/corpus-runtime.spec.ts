@@ -61,4 +61,11 @@ describe("PR #80 — Corpus Runtime: Life / Enterprise", () => {
     expect(engine).toContain("enterprise_tenant_members");
     expect(engine).toContain("life_sealed_access_sessions");
   });
+
+  test("runtime index does not leak unrestricted aggregate membership counts", () => {
+    const routes = readFileSync("apps/api/src/corpus-routes.ts", "utf8");
+    const runtimeIndex = routes.match(/app\.get\("\/v1\/corpus-runtime",[\s\S]*?app\.get\("\/v1\/corpus-runtime\/:view"/)?.[0] ?? "";
+    expect(runtimeIndex).not.toContain("membership_count:Number(x.membership_count");
+    expect(runtimeIndex).toContain('switch_semantics:"read-only-canonical-cko-projection"');
+  });
 });

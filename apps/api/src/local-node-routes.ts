@@ -10,6 +10,12 @@ function principal(request: FastifyRequest): string {
   return value;
 }
 
+async function assertWorkspace(client:any,nodeId:string,workspaceId:string){
+  const workspace=await client.query(`SELECT id,name,slug FROM workspaces WHERE id=$1 AND node_id=$2`,[workspaceId,nodeId]);
+  if(workspace.rowCount!==1)throw Object.assign(new Error("WORKSPACE_NOT_FOUND"),{statusCode:404});
+  return workspace.rows[0];
+}
+
 export function registerLocalNodeRoutes(app: FastifyInstance): void {
   app.get("/v1/local/overview",async(request)=>withTransaction(async client=>{
     const principalId=principal(request),node=await client.query(`SELECT n.id,n.name,n.slug,n.deployment_mode FROM nodes n JOIN principals p ON p.node_id=n.id WHERE p.id=$1`,[principalId]);
@@ -45,9 +51,7 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
   app.get("/v1/local/graph",async(request)=>withTransaction(async client=>{
     const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};
     if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});
-    await assertPrincipalInNode(client,principalId,node_id);
-    const workspace=await client.query(`SELECT id FROM workspaces WHERE id=$1 AND node_id=$2`,[workspace_id,node_id]);
-    if(workspace.rowCount!==1)throw Object.assign(new Error("GRAPH_WORKSPACE_NOT_FOUND"),{statusCode:404});
+    await assertPrincipalInNode(client,principalId,node_id);await assertWorkspace(client,node_id,workspace_id);
     const scope=await resolveRetrievalScope(client,{nodeId:node_id,principalId,workspaceId:workspace_id});
     if(scope.allowedCkoIds&&scope.allowedCkoIds.length===0)return {nodes:[],edges:[],scope:{node_id,workspace_id,principal_id:principalId,policy_snapshot_hash:scope.policySnapshotHash},projection_source:"permission-aware-claim-evidence"};
     const edges=await client.query(
@@ -71,5 +75,29 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
     const ids=[...new Set(edges.rows.flatMap(row=>[row.source,row.target]))];
     const entities=ids.length?await client.query(`SELECT id,canonical_name AS label,kind AS type,resolution_confidence FROM entities WHERE node_id=$1 AND id=ANY($2::uuid[]) ORDER BY canonical_name`,[node_id,ids]):{rows:[]};
     return {nodes:entities.rows,edges:edges.rows,scope:{node_id,workspace_id,principal_id:principalId,policy_snapshot_hash:scope.policySnapshotHash},projection_source:"permission-aware-claim-evidence"};
+  }));
+  app.get("/v1/local/deliverables",async(request)=>withTransaction(async client=>{
+    const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};
+    if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});
+    await assertPrincipalInNode(client,principalId,node_id);const workspace=await assertWorkspace(client,node_id,workspace_id);
+    const rows=await client.query(`SELECT d.id,d.title,d.format,d.version,d.approval_status,d.updated_at,d.manifest_sha256,
+      count(DISTINCT db.block_id)::int AS block_count,count(DISTINCT dr.id)::int AS render_count,
+      count(DISTINCT dd.resource_id) FILTER (WHERE dd.propagation_status<>'current')::int AS stale_dependency_count
+      FROM deliverables d LEFT JOIN deliverable_blocks db ON db.deliverable_id=d.id LEFT JOIN deliverable_renders dr ON dr.deliverable_id=d.id LEFT JOIN deliverable_dependencies dd ON dd.deliverable_id=d.id
+      WHERE d.node_id=$1 AND d.workspace_id=$2 GROUP BY d.id ORDER BY d.updated_at DESC LIMIT 100`,[node_id,workspace_id]);
+    return {workspace,deliverables:rows.rows,projection_source:"canonical-deliverable-manifests"};
+  }));
+  app.get("/v1/local/connections",async(request)=>withTransaction(async client=>{
+    const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};
+    if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});
+    await assertPrincipalInNode(client,principalId,node_id);await assertWorkspace(client,node_id,workspace_id);
+    const [clients,grants,receipts]=await Promise.all([
+      client.query(`SELECT id,name,client_kind,client_id,created_at,revoked_at FROM external_gateway_clients WHERE node_id=$1 ORDER BY created_at DESC`,[node_id]),
+      client.query(`SELECT client_id,count(*)::int AS active_grants,max(expires_at) AS latest_expiry FROM external_access_grants WHERE node_id=$1 AND (workspace_id=$2 OR workspace_id IS NULL) AND revoked_at IS NULL AND expires_at>now() GROUP BY client_id`,[node_id,workspace_id]),
+      client.query(`SELECT client_id,count(*)::int AS receipt_count,max(occurred_at) AS last_activity FROM external_access_receipts WHERE node_id=$1 AND (workspace_id=$2 OR workspace_id IS NULL) GROUP BY client_id`,[node_id,workspace_id])
+    ]);
+    const grantMap=new Map(grants.rows.map((row:any)=>[row.client_id,row])),receiptMap=new Map(receipts.rows.map((row:any)=>[row.client_id,row]));
+    const connections=clients.rows.map((row:any)=>({...row,active_grants:Number(grantMap.get(row.id)?.active_grants??0),latest_expiry:grantMap.get(row.id)?.latest_expiry??null,receipt_count:Number(receiptMap.get(row.id)?.receipt_count??0),last_activity:receiptMap.get(row.id)?.last_activity??null}));
+    return {connections,mcp:{transport:"stdio",server_command:"npm run start:mcp",tool_names:["cervel_search","cervel_reason","cervel_trace","cervel_write_proposal"],registered_clients:connections.filter((x:any)=>x.client_kind==="mcp"&&!x.revoked_at).length},projection_source:"external-gateway-runtime"};
   }));
 }

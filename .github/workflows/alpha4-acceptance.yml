@@ -107,8 +107,18 @@ jobs:
           if curl -fsS http://127.0.0.1:8787/ready >/dev/null 2>&1; then echo "Local Node still responds after stop"; exit 1; fi
           npm run cervel:setup
           jq -e --slurpfile before /tmp/alpha4-setup-before.json '.node_id == $before[0].node_id and .workspace_id == $before[0].workspace_id and .vault == $before[0].vault' "$CERVEL_DEV_STATE_DIR/setup.json"
-          npm run cervel:verify
-          npx tsx scripts/alpha4-acceptance.ts record --check restart_persistence --detail "Stop/restart preserved Vault, node and workspace identity and verification passed after restart" --source "developer lifecycle" --out reports/alpha4/fragments/restart-persistence.json
+          curl --fail --silent http://127.0.0.1:8787/ready | jq -e '.ok == true'
+          CERVEL_VAULT_PASSPHRASE="$(cat "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase")" node -e "const fs=require('fs'); const s=JSON.parse(fs.readFileSync(process.env.CERVEL_DEV_STATE_DIR+'/setup.json','utf8')); require('./dist/apps/local-node/src/vault.js').unlockVault(s.vault,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))" > /tmp/alpha4-restart-secrets.json
+          CERVEL_LOCAL_API_TOKEN="$(jq -r .local_api_token /tmp/alpha4-restart-secrets.json)" \
+          CERVEL_GOLDEN_URL="http://127.0.0.1:8787" \
+          CERVEL_GOLDEN_NODE_ID="$(jq -r .node_id "$CERVEL_DEV_STATE_DIR/setup.json")" \
+          CERVEL_GOLDEN_WORKSPACE_ID="$(jq -r .workspace_id "$CERVEL_DEV_STATE_DIR/setup.json")" \
+          CERVEL_GOLDEN_PRINCIPAL_ID="$(jq -r .principal_id "$CERVEL_DEV_STATE_DIR/setup.json")" \
+          CERVEL_GOLDEN_STORAGE_ID="$(jq -r .storage_location_id "$CERVEL_DEV_STATE_DIR/setup.json")" \
+          CERVEL_GOLDEN_REPORT="reports/golden-path/developer-verify.json" \
+          npm run --silent alpha:golden-path -- resume
+          jq -e '.checks.restart_persistence.status == "passed"' reports/golden-path/developer-verify.json
+          npx tsx scripts/alpha4-acceptance.ts record --check restart_persistence --detail "Stop/restart preserved Vault, node and workspace identity; persisted Search and Trace were verified after restart" --source "reports/golden-path/developer-verify.json" --out reports/alpha4/fragments/restart-persistence.json
       - name: Cross-surface Everywhere continuity
         run: |
           CERVEL_VAULT_PASSPHRASE="$(cat "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase")" node -e "const fs=require('fs'); const s=JSON.parse(fs.readFileSync(process.env.CERVEL_DEV_STATE_DIR+'/setup.json','utf8')); require('./dist/apps/local-node/src/vault.js').unlockVault(s.vault,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))" > /tmp/alpha4-secrets.json

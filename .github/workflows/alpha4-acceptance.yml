@@ -1,0 +1,193 @@
+name: CERVEL Everywhere Alpha.4 Acceptance Gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha4-acceptance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-mac:
+    name: acceptance / clean-mac
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          clean: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Clean dependency install
+        run: npm ci
+      - name: TypeScript build
+        run: npm run build
+      - name: Canonical Tauri native check
+        run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml
+      - name: Acceptance contract tests
+        run: npx jest tests/alpha4-acceptance --runInBand
+      - name: Record clean Mac evidence
+        run: |
+          npx tsx scripts/alpha4-acceptance.ts record --check clean_mac_install --detail "Fresh macOS runner completed lockfile install and TypeScript build" --source "acceptance/clean-mac" --out reports/alpha4/fragments/clean-mac.json
+          npx tsx scripts/alpha4-acceptance.ts record --check canonical_tauri --detail "Canonical Tauri Desktop passed native cargo check on macOS" --source "acceptance/clean-mac" --out reports/alpha4/fragments/canonical-tauri.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alpha4-mac-fragments
+          path: reports/alpha4/fragments/*.json
+
+  runtime:
+    name: acceptance / runtime-persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CERVEL_DEV_VAULT: /tmp/cervel-alpha4/vault
+      CERVEL_DEV_STATE_DIR: /tmp/cervel-alpha4/state
+      CERVEL_DEV_PORT: '8787'
+      CERVEL_DEV_DB_PORT: '55432'
+      CERVEL_EVERYWHERE_REPORT: reports/everywhere-golden-path/alpha4-report.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          clean: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start clean dependencies
+        run: |
+          docker compose up -d postgres minio
+          for i in {1..30}; do
+            if docker compose exec -T postgres pg_isready -U cervel -d cervel >/dev/null 2>&1 && curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker compose ps
+          docker compose logs postgres minio
+          exit 1
+      - name: Bootstrap encrypted Local Node from zero
+        run: |
+          test ! -e "$CERVEL_DEV_VAULT/vault.json"
+          npm run cervel:setup
+          cp "$CERVEL_DEV_STATE_DIR/setup.json" /tmp/alpha4-setup-before.json
+          curl --fail --silent http://127.0.0.1:8787/ready | jq -e '.ok == true'
+      - name: Real capture, Ask, citations, Trace, sync and revocation
+        run: |
+          npm run cervel:verify
+          REPORT=reports/golden-path/developer-verify.json
+          jq -e '.checks.vault_created.status == "passed"' "$REPORT"
+          jq -e '.checks.browser_capture.status == "passed" and .checks.mobile_capture.status == "passed"' "$REPORT"
+          jq -e '.checks.retrieval.status == "passed" and .checks.cited_answer.status == "passed" and .checks.trace_complete.status == "passed"' "$REPORT"
+          jq -e '.checks.prompt_injection_quarantined.status == "passed" and .checks.revocation.status == "passed"' "$REPORT"
+          jq -e '.checks.sync_convergence.status == "passed"' "$REPORT"
+          npx tsx scripts/alpha4-acceptance.ts record --check local_lifecycle --detail "Encrypted Local Node bootstrapped from zero and completed developer verification" --source "$REPORT" --out reports/alpha4/fragments/local-lifecycle.json
+          npx tsx scripts/alpha4-acceptance.ts record --check real_capture --detail "Browser and mobile capture checks produced canonical knowledge through the real runtime" --source "$REPORT" --out reports/alpha4/fragments/real-capture.json
+          npx tsx scripts/alpha4-acceptance.ts record --check ask_citations_trace --detail "Retrieval, cited answer and complete protected Trace checks passed" --source "$REPORT" --out reports/alpha4/fragments/ask-trace.json
+      - name: Corpus switching without duplication
+        run: |
+          npx jest tests/corpus-runtime tests/semantic-views --runInBand
+          npx tsx scripts/alpha4-acceptance.ts record --check corpus_switching --detail "Life/Enterprise switching and semantic-view contracts preserve canonical CKO identity" --source "tests/corpus-runtime + tests/semantic-views" --out reports/alpha4/fragments/corpus-switching.json
+      - name: Security and provenance boundaries
+        run: |
+          npx jest tests/reasoning-boundary tests/intelligence-convergence tests/product-convergence tests/vault-explorer --runInBand
+          npx tsx scripts/alpha4-acceptance.ts record --check security_boundaries --detail "Reasoning, renderer/native, Vault Explorer and intelligence trust-boundary contracts passed" --source "focused security/convergence suites" --out reports/alpha4/fragments/security-boundaries.json
+      - name: Restart and persistence drill
+        run: |
+          npm run cervel:stop
+          if curl -fsS http://127.0.0.1:8787/ready >/dev/null 2>&1; then echo "Local Node still responds after stop"; exit 1; fi
+          npm run cervel:setup
+          jq -e --slurpfile before /tmp/alpha4-setup-before.json '.node_id == $before[0].node_id and .workspace_id == $before[0].workspace_id and .vault == $before[0].vault' "$CERVEL_DEV_STATE_DIR/setup.json"
+          npm run cervel:verify
+          npx tsx scripts/alpha4-acceptance.ts record --check restart_persistence --detail "Stop/restart preserved Vault, node and workspace identity and verification passed after restart" --source "developer lifecycle" --out reports/alpha4/fragments/restart-persistence.json
+      - name: Cross-surface Everywhere continuity
+        run: |
+          CERVEL_VAULT_PASSPHRASE="$(cat "$CERVEL_DEV_STATE_DIR/bootstrap-passphrase")" node -e "const fs=require('fs'); const s=JSON.parse(fs.readFileSync(process.env.CERVEL_DEV_STATE_DIR+'/setup.json','utf8')); require('./dist/apps/local-node/src/vault.js').unlockVault(s.vault,process.env.CERVEL_VAULT_PASSPHRASE).then(x=>process.stdout.write(JSON.stringify(x.secrets)))" > /tmp/alpha4-secrets.json
+          {
+            echo "CERVEL_LOCAL_API_TOKEN=$(jq -r .local_api_token /tmp/alpha4-secrets.json)"
+            echo "CERVEL_GOLDEN_NODE_ID=$(jq -r .node_id "$CERVEL_DEV_STATE_DIR/setup.json")"
+            echo "CERVEL_GOLDEN_WORKSPACE_ID=$(jq -r .workspace_id "$CERVEL_DEV_STATE_DIR/setup.json")"
+            echo "CERVEL_GOLDEN_PRINCIPAL_ID=$(jq -r .principal_id "$CERVEL_DEV_STATE_DIR/setup.json")"
+            echo "CERVEL_GOLDEN_STORAGE_ID=$(jq -r .storage_location_id "$CERVEL_DEV_STATE_DIR/setup.json")"
+          } >> "$GITHUB_ENV"
+      - name: Execute Everywhere path
+        run: |
+          npx jest tests/everywhere-golden-path --runInBand
+          npx tsx scripts/everywhere-golden-path.ts
+          jq -e '.result == "passed" and .qualification.automated_api_path == "passed"' "$CERVEL_EVERYWHERE_REPORT"
+          npx tsx scripts/alpha4-acceptance.ts record --check everywhere_continuity --detail "One canonical CKO crossed capture, Desktop visibility, Ask, Trace and phone visibility stages" --source "$CERVEL_EVERYWHERE_REPORT" --out reports/alpha4/fragments/everywhere-continuity.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha4-runtime-fragments
+          path: |
+            reports/alpha4/fragments/*.json
+            reports/golden-path/developer-verify.json
+            reports/everywhere-golden-path/alpha4-report.json
+          if-no-files-found: warn
+      - name: Shutdown cleanly
+        if: always()
+        run: |
+          set +e
+          npm run cervel:stop >/dev/null 2>&1
+          docker compose down -v --remove-orphans
+
+  contracts:
+    name: acceptance / responsive-deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Responsive shared experience
+        run: |
+          npx jest tests/shared-experience tests/embodiment-contracts tests/product-convergence --runInBand
+          npx tsx scripts/alpha4-acceptance.ts record --check responsive_ui --detail "Shared shell, responsive modes, Desktop convergence, Mobile and Extension embodiment contracts passed" --source "shared/embodiment/product convergence suites" --out reports/alpha4/fragments/responsive-ui.json
+      - name: Deployment-mode convergence
+        run: |
+          npx jest tests/web-convergence --runInBand
+          npx tsx scripts/alpha4-acceptance.ts record --check deployment_modes --detail "Local/cloud/hybrid/staging/demo runtime capability and recovery contracts passed without product forks" --source "tests/web-convergence" --out reports/alpha4/fragments/deployment-modes.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alpha4-contract-fragments
+          path: reports/alpha4/fragments/*.json
+
+  release-readiness:
+    name: acceptance / release-readiness
+    needs: [clean-mac, runtime, contracts]
+    runs-on: ubuntu-latest
+    if: ${{ success() }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: alpha4-*-fragments
+          path: reports/alpha4/fragments
+          merge-multiple: true
+      - name: Finalize release-readiness evidence
+        run: |
+          npx tsx scripts/alpha4-acceptance.ts finalize --fragments reports/alpha4/fragments --out reports/alpha4/acceptance.json
+          jq -e '.result == "passed" and .release == "Alpha.4" and .release_readiness.automated_ci == "passed" and .release_readiness.signed_release_artifacts == "pending" and .release_readiness.physical_device_qualification == "pending"' reports/alpha4/acceptance.json
+          cat reports/alpha4/acceptance.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cervel-alpha4-release-readiness-${{ github.sha }}
+          path: reports/alpha4/acceptance.json

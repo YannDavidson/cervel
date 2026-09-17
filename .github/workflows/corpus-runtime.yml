@@ -1,0 +1,29 @@
+name: CERVEL Corpus Runtime
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/corpus-routes.ts'
+      - 'apps/api/src/corpus-runtime-view.ts'
+      - 'apps/api/src/corpus-engine.ts'
+      - 'tests/corpus-runtime/**'
+      - 'docs/CORPUS_RUNTIME.md'
+      - '.github/workflows/corpus-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Corpus runtime contracts
+        run: npx jest tests/corpus-runtime --runInBand
+      - name: TypeScript build
+        run: npm run build

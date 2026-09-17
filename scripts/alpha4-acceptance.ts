@@ -84,7 +84,7 @@ async function finalize() {
   const report: Report = {
     protocol: "cervel-alpha4-acceptance/v0.1",
     release: "Alpha.4",
-    commit_sha: process.env.GITHUB_SHA ?? process.env.CERVEL_ACCEPTANCE_SHA ?? "unknown",
+    commit_sha: process.env.CERVEL_ACCEPTANCE_SHA ?? process.env.GITHUB_SHA ?? "unknown",
     run_id: process.env.GITHUB_RUN_ID ?? "local",
     generated_at: new Date().toISOString(),
     result: "passed",

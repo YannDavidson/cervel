@@ -82,11 +82,13 @@ async function checkToolchain() {
   if (await exists(join(repoRoot, ".env"))) add("Environment file", "pass", ".env present");
   else add("Environment file", "warn", ".env not created yet", "Run npm run cervel:setup; setup creates it from .env.example.");
 
-  if (await exists(join(repoRoot, "node_modules", ".bin", process.platform === "win32" ? "electron.cmd" : "electron"))) {
-    add("Desktop prerequisites", "pass", "Electron dependency installed");
-  } else {
-    add("Desktop prerequisites", "warn", "Electron dependency is not installed", "Run npm ci before launching npm run desktop:dev.");
-  }
+  const cargo = command("cargo", ["--version"]);
+  if (!cargo.error && cargo.status === 0) add("Canonical Desktop toolchain", "pass", String(cargo.stdout).trim());
+  else add("Canonical Desktop toolchain", "fail", "Rust/Cargo is unavailable", "Install the Rust toolchain required by the canonical Tauri Desktop before running npm run cervel:dev.");
+
+  const manifest = join(repoRoot, "apps", "desktop-tauri", "src-tauri", "Cargo.toml");
+  if (await exists(manifest)) add("Canonical Desktop manifest", "pass", manifest);
+  else add("Canonical Desktop manifest", "fail", "Tauri Cargo.toml is missing", "Restore apps/desktop-tauri/src-tauri/Cargo.toml from the repository.");
 }
 
 async function checkRuntime() {

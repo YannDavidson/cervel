@@ -1,4 +1,5 @@
 export * from "./runtime-capabilities";
+export * from "./embodiment-contracts";
 
 export type CervelSurfaceId =
   | "home"

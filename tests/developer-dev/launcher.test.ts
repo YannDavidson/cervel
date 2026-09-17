@@ -7,19 +7,23 @@ describe("one-command developer runtime", () => {
   test("package exposes cervel:dev as the canonical launcher", async () => {
     const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     expect(pkg.scripts["cervel:dev"]).toBe("tsx scripts/developer-dev.ts");
+    expect(pkg.scripts["desktop:dev"]).toBe("npm run desktop:canonical:dev");
+    expect(pkg.scripts["desktop:canonical:dev"]).toContain("cargo run --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml");
+    expect(pkg.scripts["desktop:legacy:dev"]).toContain("electron .");
   });
 
-  test("launcher preserves doctor -> bootstrap -> readiness -> desktop ordering", async () => {
+  test("launcher preserves doctor -> bootstrap -> readiness -> canonical desktop ordering", async () => {
     const source = await readFile(join(root, "scripts", "developer-dev.ts"), "utf8");
     const doctor = source.indexOf('runSync("cervel:doctor"');
     const setup = source.indexOf('runSync("cervel:setup"');
     const readiness = source.indexOf("await ready()", setup);
-    const desktop = source.indexOf('["run", "desktop:dev"]');
+    const desktop = source.indexOf('["run", "desktop:canonical:dev"]');
 
     expect(doctor).toBeGreaterThan(-1);
     expect(setup).toBeGreaterThan(doctor);
     expect(readiness).toBeGreaterThan(setup);
     expect(desktop).toBeGreaterThan(readiness);
+    expect(source).toContain("legacy Electron presentation is deprecated");
   });
 
   test("README headlines the four-line GitHub-to-CERVEL flow", async () => {

@@ -7,3 +7,4 @@ coverage/
 *.cvbackup
 *.cvlt
 .cervel/
+apps/desktop-tauri/ui/brand/cervel-logo.png

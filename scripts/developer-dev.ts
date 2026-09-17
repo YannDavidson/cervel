@@ -51,15 +51,15 @@ async function ensureRuntime() {
   console.log("1/5  Checking developer environment...");
   const doctor = runSync("cervel:doctor", ["--json"]);
   if (doctor === 0 && await ready()) {
-    console.log("✓ Existing Local Node is healthy; reusing it.");
+    console.log("✓ Existing encrypted Local Node is healthy; reusing it.");
     return;
   }
 
-  console.log("\n2/5  Bootstrapping local runtime...");
+  console.log("\n2/5  Bootstrapping encrypted local runtime...");
   const setup = runSync("cervel:setup");
   if (setup !== 0) fail("Developer bootstrap failed. Resolve the reported prerequisite and rerun npm run cervel:dev.");
 
-  console.log("\n3/5  Local infrastructure and Local Node started.");
+  console.log("\n3/5  Local infrastructure and encrypted Local Node started.");
   if (!(await exists(setupPath))) fail(`Developer setup state was not created at ${setupPath}.`);
 
   console.log("\n4/5  Waiting for Local Node readiness...");
@@ -77,7 +77,7 @@ async function ensureRuntime() {
 function shutdown(signal: NodeJS.Signals) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`\nStopping CERVEL development runtime (${signal})...`);
+  console.log(`\nStopping CERVEL development launcher (${signal})...`);
   for (const child of children) {
     if (!child.killed) child.kill(signal);
   }
@@ -85,21 +85,22 @@ function shutdown(signal: NodeJS.Signals) {
 }
 
 async function main() {
-  console.log("CERVEL One-Command Local Runtime\n");
+  console.log("CERVEL Canonical Local Product Runtime\n");
   await ensureRuntime();
   const env = await runtimeEnv();
 
-  console.log("\n5/5  Starting CERVEL Desktop...");
+  console.log("\n5/5  Starting canonical CERVEL Desktop (Tauri)...");
+  console.log("The legacy Electron presentation is deprecated and is no longer launched by cervel:dev.");
   console.log("\nCERVEL is ready. Press Ctrl+C to stop the development launcher.\n");
 
-  const desktop = spawn(npmCommand, ["run", "desktop:dev"], {
+  const desktop = spawn(npmCommand, ["run", "desktop:canonical:dev"], {
     cwd: repoRoot,
-    env,
+    env: { ...env, CERVEL_CANONICAL_EXPERIENCE: "1" },
     stdio: "inherit",
   });
   children.add(desktop);
 
-  desktop.once("error", (error) => fail(`Desktop could not be started: ${error.message}`));
+  desktop.once("error", (error) => fail(`Canonical Desktop could not be started: ${error.message}`));
   desktop.once("exit", (code, signal) => {
     children.delete(desktop);
     if (shuttingDown) return;

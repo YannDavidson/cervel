@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { withTransaction } from "./db";
 import { assertPrincipalInNode } from "./access";
+import { resolveRetrievalScope } from "./retrieval";
 import { listVaultExplorerObjects, loadVaultExplorer, loadVaultExplorerObject } from "./vault-explorer";
 
 function principal(request: FastifyRequest): string {
@@ -42,8 +43,33 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
     const result=await client.query(`SELECT ko.id,ko.type,ko.title,ko.summary,ko.created_at,ko.updated_at,count(a.id)::int AS artifact_count FROM knowledge_objects ko LEFT JOIN artifacts a ON a.cko_id=ko.id WHERE ${where.join(" AND ")} GROUP BY ko.id ORDER BY ko.updated_at DESC LIMIT 200`,values);return {objects:result.rows};
   }));
   app.get("/v1/local/graph",async(request)=>withTransaction(async client=>{
-    const principalId=principal(request),{node_id}=request.query as {node_id?:string};if(!node_id)throw Object.assign(new Error("NODE_ID_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);
-    const edges=await client.query(`SELECT id,semantic_subject_entity_id AS source,semantic_object_entity_id AS target,coalesce(semantic_predicate,predicate) AS label,confidence FROM claims WHERE node_id=$1 AND semantic_subject_entity_id IS NOT NULL AND semantic_object_entity_id IS NOT NULL ORDER BY created_at DESC LIMIT 300`,[node_id]);
-    const ids=[...new Set(edges.rows.flatMap(row=>[row.source,row.target]))];const entities=ids.length?await client.query(`SELECT id,canonical_name AS label,kind AS type,resolution_confidence FROM entities WHERE node_id=$1 AND id=ANY($2::uuid[]) ORDER BY canonical_name`,[node_id,ids]):{rows:[]};return {nodes:entities.rows,edges:edges.rows};
+    const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};
+    if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});
+    await assertPrincipalInNode(client,principalId,node_id);
+    const workspace=await client.query(`SELECT id FROM workspaces WHERE id=$1 AND node_id=$2`,[workspace_id,node_id]);
+    if(workspace.rowCount!==1)throw Object.assign(new Error("GRAPH_WORKSPACE_NOT_FOUND"),{statusCode:404});
+    const scope=await resolveRetrievalScope(client,{nodeId:node_id,principalId,workspaceId:workspace_id});
+    if(scope.allowedCkoIds&&scope.allowedCkoIds.length===0)return {nodes:[],edges:[],scope:{node_id,workspace_id,principal_id:principalId,policy_snapshot_hash:scope.policySnapshotHash},projection_source:"permission-aware-claim-evidence"};
+    const edges=await client.query(
+      `SELECT DISTINCT c.id,c.created_at,c.semantic_subject_entity_id AS source,c.semantic_object_entity_id AS target,
+              coalesce(c.semantic_predicate,c.predicate) AS label,c.confidence,
+              ce.fragment_id AS evidence_fragment_id,f.cko_id AS source_cko_id
+         FROM claims c
+         JOIN claim_evidence ce ON ce.claim_id=c.id
+         JOIN fragments f ON f.id=ce.fragment_id
+         JOIN knowledge_objects ko ON ko.id=f.cko_id
+        WHERE c.node_id=$1
+          AND ko.node_id=$1
+          AND ko.workspace_id=$2
+          AND ko.lifecycle_status<>'deleted'
+          AND ($3::uuid[] IS NULL OR ko.id=ANY($3::uuid[]))
+          AND c.semantic_subject_entity_id IS NOT NULL
+          AND c.semantic_object_entity_id IS NOT NULL
+        ORDER BY c.created_at DESC LIMIT 300`,
+      [node_id,workspace_id,scope.allowedCkoIds]
+    );
+    const ids=[...new Set(edges.rows.flatMap(row=>[row.source,row.target]))];
+    const entities=ids.length?await client.query(`SELECT id,canonical_name AS label,kind AS type,resolution_confidence FROM entities WHERE node_id=$1 AND id=ANY($2::uuid[]) ORDER BY canonical_name`,[node_id,ids]):{rows:[]};
+    return {nodes:entities.rows,edges:edges.rows,scope:{node_id,workspace_id,principal_id:principalId,policy_snapshot_hash:scope.policySnapshotHash},projection_source:"permission-aware-claim-evidence"};
   }));
 }

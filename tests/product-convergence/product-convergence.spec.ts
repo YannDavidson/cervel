@@ -6,11 +6,15 @@ describe("Desktop product convergence",()=>{
   test("cervel dev launches the canonical Tauri experience",async()=>{
     const pkg=JSON.parse(await readFile(join(root,"package.json"),"utf8"));
     const launcher=await readFile(join(root,"scripts","developer-dev.ts"),"utf8");
+    const doctor=await readFile(join(root,"scripts","developer-doctor.ts"),"utf8");
     expect(pkg.scripts["desktop:dev"]).toBe("npm run desktop:canonical:dev");
     expect(pkg.scripts["desktop:canonical:dev"]).toContain("apps/desktop-tauri/src-tauri/Cargo.toml");
     expect(pkg.scripts["desktop:legacy:dev"]).toContain("electron .");
     expect(launcher).toContain('["run", "desktop:canonical:dev"]');
     expect(launcher).not.toContain('["run", "desktop:legacy:dev"]');
+    expect(doctor).toContain('command("cargo", ["--version"])');
+    expect(doctor).toContain('add("Canonical Desktop toolchain", "fail"');
+    expect(doctor).not.toContain('Electron dependency installed');
   });
 
   test("deliverables and connections stay behind the native Local Node bridge",async()=>{

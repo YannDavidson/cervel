@@ -180,6 +180,8 @@ jobs:
     needs: [clean-mac, runtime, contracts]
     runs-on: ubuntu-latest
     if: ${{ success() }}
+    env:
+      CERVEL_ACCEPTANCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -195,9 +197,9 @@ jobs:
       - name: Finalize release-readiness evidence
         run: |
           npx tsx scripts/alpha4-acceptance.ts finalize --fragments reports/alpha4/fragments --out reports/alpha4/acceptance.json
-          jq -e '.result == "passed" and .release == "Alpha.4" and .release_readiness.automated_ci == "passed" and .release_readiness.signed_release_artifacts == "pending" and .release_readiness.physical_device_qualification == "pending"' reports/alpha4/acceptance.json
+          jq -e --arg sha "$CERVEL_ACCEPTANCE_SHA" '.result == "passed" and .release == "Alpha.4" and .commit_sha == $sha and .release_readiness.automated_ci == "passed" and .release_readiness.signed_release_artifacts == "pending" and .release_readiness.physical_device_qualification == "pending"' reports/alpha4/acceptance.json
           cat reports/alpha4/acceptance.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: cervel-alpha4-release-readiness-${{ github.sha }}
+          name: cervel-alpha4-release-readiness-${{ env.CERVEL_ACCEPTANCE_SHA }}
           path: reports/alpha4/acceptance.json

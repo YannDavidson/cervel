@@ -1,0 +1,28 @@
+name: CERVEL Web Deployment Convergence
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'packages/shared-experience/**'
+      - 'tests/web-convergence/**'
+      - 'docs/WEB_DEPLOYMENT_CONVERGENCE.md'
+      - '.github/workflows/web-convergence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Web deployment convergence contracts
+        run: npx jest tests/web-convergence --runInBand
+      - name: TypeScript build
+        run: npm run build

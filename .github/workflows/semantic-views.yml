@@ -1,0 +1,30 @@
+name: CERVEL Semantic Views
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/corpus-routes.ts'
+      - 'apps/api/src/corpus-semantic-views.ts'
+      - 'packages/life-corpus/**'
+      - 'packages/enterprise-corpus/**'
+      - 'tests/semantic-views/**'
+      - 'docs/SEMANTIC_VIEWS.md'
+      - '.github/workflows/semantic-views.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-views:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Semantic view contracts
+        run: npx jest tests/semantic-views --runInBand
+      - name: TypeScript build
+        run: npm run build

@@ -29,8 +29,10 @@ jobs:
         run: npm run build
 
   tauri-bridge:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
       - name: Check Tauri native bridge
-        run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml
+        working-directory: apps/desktop-tauri/src-tauri
+        run: cargo check

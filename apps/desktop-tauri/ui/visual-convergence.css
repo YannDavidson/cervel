@@ -54,3 +54,17 @@ html[data-theme="dark"] input,html[data-theme="dark"] textarea{color:var(--cv-in
 html[data-theme="dark"] .home-runtime-strip{background:linear-gradient(90deg,rgba(23,66,51,.72),rgba(20,43,36,.74));color:#99e3c6}
 @media(max-width:1280px){.home-brand-lockup{opacity:.16;right:26px}.home-hero-copy{max-width:82%}}
 @media(max-width:1100px){.home-brand-lockup{display:none}.home-hero-copy{max-width:100%}}
+
+
+/* PR #90 — deterministic light default and readable dual-theme hero */
+.home-hero h2,#home-hero-title{color:#0b1220}
+.home-hero h2 em,#home-hero-accent{color:#0d5b46}
+.home-hero p,#home-hero-description{color:#667085}
+html[data-theme="dark"] .home-hero{background:linear-gradient(118deg,#17201f,#172823 58%,#171d28);border-color:rgba(109,231,197,.14);box-shadow:0 18px 60px rgba(0,0,0,.28)}
+html[data-theme="dark"] .home-hero::after{background:radial-gradient(circle,rgba(109,231,197,.14),rgba(111,76,255,.10) 45%,transparent 70%)}
+html[data-theme="dark"] .home-hero h2,html[data-theme="dark"] #home-hero-title{color:#f2f8f5}
+html[data-theme="dark"] .home-hero h2 em,html[data-theme="dark"] #home-hero-accent{color:#78e7c7}
+html[data-theme="dark"] .home-hero p,html[data-theme="dark"] #home-hero-description{color:#b6c3c8}
+html[data-theme="dark"] .home-kicker{color:#81e9cb}
+html[data-theme="dark"] .home-hero .hero-actions .primary{background:#eef7f3;color:#10201b}
+html[data-theme="dark"] .home-hero .hero-actions button:not(.primary){background:#202b2a;color:#edf5f2;border-color:rgba(255,255,255,.12)}

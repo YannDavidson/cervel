@@ -1,0 +1,45 @@
+name: CERVEL Desktop Persistence and Graph UX
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop-tauri/**'
+      - 'tests/desktop-persistence-session-graph/**'
+      - '.github/workflows/desktop-persistence-session-graph.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  persistence-graph-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Renderer syntax checks
+        run: |
+          node --check apps/desktop-tauri/ui/app.js
+          node --check apps/desktop-tauri/ui/workspace.js
+          node --check apps/desktop-tauri/ui/intelligence.js
+          node --check apps/desktop-tauri/ui/home-experience.js
+      - run: npx jest tests/desktop-persistence-session-graph --runInBand
+      - run: npm run build
+
+  native-session-recovery:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run prepare:desktop:ui
+      - run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml

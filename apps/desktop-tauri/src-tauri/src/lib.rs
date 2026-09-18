@@ -18,11 +18,52 @@ struct Bootstrap { node_id: String, workspace_id: String, principal_id: String, 
 fn repo_root()->PathBuf { std::env::var("CERVEL_APP_ROOT").map(PathBuf::from).unwrap_or_else(|_|std::env::current_dir().unwrap_or_default()) }
 fn dirs_home()->PathBuf { std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(||PathBuf::from(".")) }
 fn is_node_running()->bool { TcpStream::connect_timeout(&format!("127.0.0.1:{NODE_PORT}").parse().unwrap(),Duration::from_millis(250)).is_ok() }
-fn status_for(runtime:&NodeRuntime)->NodeStatus { let vault=runtime.0.lock().ok().and_then(|s|s.active_vault.as_ref().map(|p|p.to_string_lossy().to_string()));NodeStatus{running:is_node_running(),endpoint:format!("http://127.0.0.1:{NODE_PORT}"),managed_by_desktop:true,vault} }
+fn runtime_session_valid(vault:&Path)->bool {
+    let bootstrap=vault.join("runtime/bootstrap.json");
+    let session=vault.join("runtime/desktop-session.json");
+    if !bootstrap.is_file()||!session.is_file(){return false}
+    let Some(boot)=fs::read(&bootstrap).ok().and_then(|bytes|serde_json::from_slice::<Bootstrap>(&bytes).ok()) else{return false};
+    let Some(secrets)=fs::read(&session).ok().and_then(|bytes|serde_json::from_slice::<VaultSecrets>(&bytes).ok()) else{return false};
+    if secrets.local_api_token.trim().is_empty(){return false}
+    let url=format!("http://127.0.0.1:{NODE_PORT}/v1/local/overview");
+    let Ok(mut response)=ureq::Agent::new_with_defaults().get(&url).header("x-cervel-local-token",&secrets.local_api_token).header("x-cervel-principal-id",&boot.principal_id).call() else{return false};
+    let Ok(payload)=serde_json::from_reader::<_,serde_json::Value>(response.body_mut().as_reader()) else{return false};
+    payload.get("node").and_then(|node|node.get("id")).and_then(|id|id.as_str())==Some(boot.node_id.as_str())
+}
+fn recover_active_vault(runtime:&NodeRuntime)->Option<PathBuf> {
+    if !is_node_running(){return None}
+    if let Ok(mut state)=runtime.0.lock(){
+        if let Some(vault)=state.active_vault.clone(){
+            if runtime_session_valid(&vault){return Some(vault)}
+            state.active_vault=None;
+        }
+        let base=dirs_home().join(".cervel/vaults");
+        let mut candidates=Vec::new();
+        if let Ok(entries)=fs::read_dir(base){
+            for entry in entries.flatten(){
+                let path=entry.path();
+                if path.is_dir()&&path.join("vault.json").is_file()&&runtime_session_valid(&path){candidates.push(path)}
+            }
+        }
+        if candidates.len()==1{
+            state.active_vault=Some(candidates[0].clone());
+            return state.active_vault.clone();
+        }
+    }
+    None
+}
+fn status_for(runtime:&NodeRuntime)->NodeStatus {
+    let running=is_node_running();
+    let vault=if running{recover_active_vault(runtime).map(|p|p.to_string_lossy().to_string())}else{None};
+    NodeStatus{running,endpoint:format!("http://127.0.0.1:{NODE_PORT}"),managed_by_desktop:true,vault}
+}
 fn cli_path()->PathBuf { repo_root().join("dist/apps/local-node/src/cli.js") }
 fn validate_vault(path:&Path)->Result<(),String> { if !path.join("vault.json").is_file(){return Err("Select a CERVEL Vault containing vault.json.".into())} Ok(()) }
 fn run_cli(command:&str,vault:&Path,passphrase:Option<&str>)->Result<(),String> { let cli=cli_path();if !cli.exists(){return Err("Local Node build not found. Run npm run build first.".into())}let mut process=Command::new("node");process.arg(cli).arg(command).arg("--vault").arg(vault).arg("--port").arg(NODE_PORT.to_string()).stdin(Stdio::null());if let Some(secret)=passphrase{process.env("CERVEL_VAULT_PASSPHRASE",secret);}let output=process.output().map_err(|e|format!("Unable to run CERVEL Local Node: {e}"))?;if !output.status.success(){let message=String::from_utf8_lossy(&output.stderr).trim().to_string();return Err(if message.is_empty(){format!("cervel {command} failed")}else{message})}Ok(()) }
-fn active_vault(runtime:&NodeRuntime)->Result<PathBuf,String> { runtime.0.lock().map_err(|_|"Node runtime lock poisoned")?.active_vault.clone().ok_or_else(||"Unlock a Vault first.".into()) }
+fn active_vault(runtime:&NodeRuntime)->Result<PathBuf,String> {
+    if let Some(vault)=recover_active_vault(runtime){return Ok(vault)}
+    Err("Unlock a Vault first.".into())
+}
 fn read_runtime(vault:&Path)->Result<(Bootstrap,VaultSecrets),String> { let bootstrap:Bootstrap=serde_json::from_slice(&fs::read(vault.join("runtime/bootstrap.json")).map_err(|_|"Local Node bootstrap metadata is unavailable. Start the Node first.".to_string())?).map_err(|e|e.to_string())?;let secrets:VaultSecrets=serde_json::from_slice(&fs::read(vault.join("runtime/desktop-session.json")).map_err(|_|"Desktop session is locked. Unlock the Vault again.".to_string())?).map_err(|e|e.to_string())?;Ok((bootstrap,secrets)) }
 fn api(runtime:&NodeRuntime,method:&str,path:&str,body:Option<serde_json::Value>)->Result<serde_json::Value,String> { let vault=active_vault(runtime)?;let (boot,secrets)=read_runtime(&vault)?;let agent=ureq::Agent::new_with_defaults();let url=format!("http://127.0.0.1:{NODE_PORT}{path}");let mut response=match method{"GET"=>agent.get(&url).header("x-cervel-local-token",&secrets.local_api_token).header("x-cervel-principal-id",&boot.principal_id).call(),"POST"=>{let request=agent.post(&url).header("x-cervel-local-token",&secrets.local_api_token).header("x-cervel-principal-id",&boot.principal_id);if let Some(payload)=body{request.send_json(payload)}else{request.send_empty()}},_=>return Err("Unsupported Desktop Local Node method".into())}.map_err(|e|format!("Local Node request failed: {e}"))?;serde_json::from_reader(response.body_mut().as_reader()).map_err(|e|e.to_string()) }
 fn capture_bytes(runtime:&NodeRuntime,boot:&Bootstrap,kind:&str,title:&str,summary:&str,filename:&str,mime_type:&str,bytes:&[u8])->Result<String,String>{if bytes.len() as u64>MAX_DESKTOP_FILE_BYTES{return Err("File exceeds the 24 MB Desktop capture limit.".into())}let created:CreatedObject=serde_json::from_value(api(runtime,"POST","/v1/objects",Some(serde_json::json!({"node_id":boot.node_id,"workspace_id":boot.workspace_id,"type":kind,"title":title,"summary":summary})))?).map_err(|e|e.to_string())?;let _=api(runtime,"POST",&format!("/v1/objects/{}/artifacts",created.id),Some(serde_json::json!({"storage_location_id":boot.storage_location_id,"filename":filename,"mime_type":mime_type,"content_base64":base64::Engine::encode(&base64::engine::general_purpose::STANDARD,bytes),"role":"original"})))?;Ok(created.id)}

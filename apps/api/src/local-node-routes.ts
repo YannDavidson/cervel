@@ -50,16 +50,16 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
       const filed=await fileLifeCko(client,{nodeId:body.node_id,workspaceId:body.workspace_id,principalId,ckoId:body.cko_id,megaTab:body.mega_tab,subtab:body.subtab});
       return reply.code(201).send({corpus_key:"life",membership:filed});
     }
-    const tenants=await client.query(
-      `SELECT t.id FROM enterprise_tenants t
-         JOIN corpus_definitions cd ON cd.id=t.corpus_id
-         JOIN enterprise_tenant_members m ON m.tenant_id=t.id AND m.principal_id=$3 AND m.role IN('contributor','manager','authority')
-        WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND t.status='active'
-        ORDER BY t.is_default DESC,t.created_at ASC LIMIT 2`,
-      [body.node_id,body.workspace_id,principalId]
-    );
-    if(tenants.rowCount!==1)throw Object.assign(new Error("ENTERPRISE_TENANT_CONTEXT_REQUIRED"),{statusCode:409});
     if(body.corpus_key==="enterprise"){
+      const tenants=await client.query(
+        `SELECT t.id FROM enterprise_tenants t
+           JOIN corpus_definitions cd ON cd.id=t.corpus_id
+           JOIN enterprise_tenant_members m ON m.tenant_id=t.id AND m.principal_id=$3 AND m.role IN('contributor','manager','authority')
+          WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND t.status='active'
+          ORDER BY t.is_default DESC,t.created_at ASC LIMIT 2`,
+        [body.node_id,body.workspace_id,principalId]
+      );
+      if(tenants.rowCount!==1)throw Object.assign(new Error("ENTERPRISE_TENANT_CONTEXT_REQUIRED"),{statusCode:409});
       const filed=await fileEnterpriseCko(client,{tenantId:tenants.rows[0].id,principalId,ckoId:body.cko_id,megaTab:body.mega_tab,subtab:body.subtab,authorityStatus:"reported"});
       return reply.code(201).send({corpus_key:"enterprise",membership:filed});
     }

@@ -43,6 +43,7 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
   test("Desktop and Local Node expose the universal registry rather than a Life/Enterprise fork",()=>{
     const explorer=readFileSync("apps/api/src/vault-explorer.ts","utf8");
     const local=readFileSync("apps/api/src/local-node-routes.ts","utf8");
+    const vault=readFileSync("apps/api/src/vault-explorer.ts","utf8");
     const desktop=readFileSync("apps/desktop-tauri/ui/workspace.js","utf8");
     const index=readFileSync("apps/desktop-tauri/ui/index.html","utf8");
     const rust=readFileSync("apps/desktop-tauri/src-tauri/src/lib.rs","utf8");
@@ -50,6 +51,8 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
     expect(explorer).toContain("ensureBuiltinCorpora");
     expect(local).toContain("addManualMembership");
     expect(local).toContain('tab:"overview"');
+    expect(vault).toContain("resolveRetrievalScope");
+    expect(vault).toContain("ko.id=ANY(${values.length}::uuid[])");
     expect(desktop).toContain("canonicalCorpusOrder=['life','enterprise','knowledge','world','civilization','machine','ai','experience','resource','civic-national']");
     expect(desktop).toContain("explorer.semantic_views?.[key]");
     expect(desktop).toContain("[data-corpus-open]");

@@ -17,7 +17,7 @@ export async function ensureBuiltinCorpora(c:PoolClient,input:{nodeId:string;wor
       const table=def.key==="life"?"life_corpus_branch_policies":"enterprise_branch_policies";
       const installed=await c.query(`SELECT cd.* FROM corpus_definitions cd WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND cd.corpus_key=$3 AND EXISTS(SELECT 1 FROM ${table} p WHERE p.corpus_id=cd.id)`,[input.nodeId,input.workspaceId,def.key]);
       if(installed.rowCount){
-        const refreshed=await c.query(`UPDATE corpus_definitions SET title=$4,description=$5,taxonomy=$6::jsonb,classification_rules=$7::jsonb,updated_at=now() WHERE id=$8 RETURNING *`,[input.nodeId,input.workspaceId,def.key,def.title,def.description,JSON.stringify(def.taxonomy),JSON.stringify(def.rules),installed.rows[0].id]);
+        const refreshed=await c.query(`UPDATE corpus_definitions SET title=$1,description=$2,taxonomy=$3::jsonb,classification_rules=$4::jsonb,updated_at=now() WHERE id=$5 RETURNING *`,[def.title,def.description,JSON.stringify(def.taxonomy),JSON.stringify(def.rules),installed.rows[0].id]);
         rows.push(refreshed.rows[0]);continue;
       }
     }

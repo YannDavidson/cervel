@@ -20,6 +20,9 @@ describe("Desktop persistence, session recovery, and graph UX",()=>{
     expect(rust).toContain('runtime/desktop-session.json');
     expect(rust).toContain('runtime/bootstrap.json');
     expect(rust).toContain("if candidates.len()==1");
+    expect(rust).toContain('/v1/local/overview');
+    expect(rust).toContain('"x-cervel-local-token"');
+    expect(rust).toContain('==Some(boot.node_id.as_str())');
     expect(rust).toContain("if let Some(vault)=recover_active_vault(runtime){return Ok(vault)}");
   });
 

@@ -19,12 +19,12 @@ jobs:
       CERVEL_NODE_NAME: Corpus Engine CI
       CERVEL_BOOTSTRAP_ADMIN_SUBJECT: corpus-admin
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       - run: npm install --no-audit --no-fund
       - run: npm run build
       - run: npm run test:corpus-engine -- --runInBand
       - run: npm run db:migrate
       - run: npm run --silent db:bootstrap | jq -e '.event == "cervel_bootstrap"' >/dev/null
-      - run: npm run --silent smoke:corpus-engine | jq -e '.ok == true and .engine_version == "1.0" and .corpora == 9 and .memberships >= 3 and .canonical_cko_count == 1' >/dev/null
+      - run: npm run --silent smoke:corpus-engine | jq -e '.ok == true and .engine_version == "1.1" and .corpora == 10 and .memberships >= 3 and .canonical_cko_count == 1' >/dev/null

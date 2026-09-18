@@ -1,7 +1,7 @@
 import { corpusRuntimeEnvelope, runtimeCorpusViewKey } from "../../apps/api/src/corpus-runtime-view";
 import { readFileSync } from "node:fs";
 
-describe("PR #80 — Corpus Runtime: Life / Enterprise", () => {
+describe("PR #92 — Universal Corpus Runtime", () => {
   const base = {
     corpus_id: "corpus-life",
     corpus_key: "life",
@@ -23,9 +23,8 @@ describe("PR #80 — Corpus Runtime: Life / Enterprise", () => {
     authority_metadata: {}
   };
 
-  test("accepts only Life and Enterprise as first-party runtime views", () => {
-    expect(runtimeCorpusViewKey("life")).toBe("life");
-    expect(runtimeCorpusViewKey("enterprise")).toBe("enterprise");
+  test("accepts every canonical corpus as a first-party runtime view", () => {
+    for(const key of ["life","enterprise","knowledge","world","civilization","machine","ai","experience","resource","civic-national"]) expect(runtimeCorpusViewKey(key)).toBe(key);
     expect(() => runtimeCorpusViewKey("demo")).toThrow("CORPUS_RUNTIME_VIEW_INVALID");
   });
 
@@ -42,7 +41,7 @@ describe("PR #80 — Corpus Runtime: Life / Enterprise", () => {
     expect(envelope.duplication_policy).toBe("canonical-cko-references-only");
   });
 
-  test("switching Life to Enterprise preserves canonical identity instead of copying knowledge", () => {
+  test("switching between corpora preserves canonical identity instead of copying knowledge", () => {
     const life = corpusRuntimeEnvelope("life", [{ ...base, mega_tab: "projects", tab: "overview", subtab: "" }]);
     const enterprise = corpusRuntimeEnvelope("enterprise", [{ ...base, corpus_id: "corpus-enterprise", corpus_key: "enterprise", enterprise_tenant_id: "tenant-1", mega_tab: "products", tab: "overview", subtab: "" }]);
     expect(life.canonical_objects[0].cko_id).toBe(enterprise.canonical_objects[0].cko_id);

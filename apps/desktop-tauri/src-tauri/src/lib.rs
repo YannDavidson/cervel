@@ -22,9 +22,13 @@ fn runtime_session_valid(vault:&Path)->bool {
     let bootstrap=vault.join("runtime/bootstrap.json");
     let session=vault.join("runtime/desktop-session.json");
     if !bootstrap.is_file()||!session.is_file(){return false}
-    let boot_ok=fs::read(&bootstrap).ok().and_then(|bytes|serde_json::from_slice::<Bootstrap>(&bytes).ok()).is_some();
-    let session_ok=fs::read(&session).ok().and_then(|bytes|serde_json::from_slice::<VaultSecrets>(&bytes).ok()).map(|s|!s.local_api_token.trim().is_empty()).unwrap_or(false);
-    boot_ok&&session_ok
+    let Some(boot)=fs::read(&bootstrap).ok().and_then(|bytes|serde_json::from_slice::<Bootstrap>(&bytes).ok()) else{return false};
+    let Some(secrets)=fs::read(&session).ok().and_then(|bytes|serde_json::from_slice::<VaultSecrets>(&bytes).ok()) else{return false};
+    if secrets.local_api_token.trim().is_empty(){return false}
+    let url=format!("http://127.0.0.1:{NODE_PORT}/v1/local/overview");
+    let Ok(mut response)=ureq::Agent::new_with_defaults().get(&url).header("x-cervel-local-token",&secrets.local_api_token).header("x-cervel-principal-id",&boot.principal_id).call() else{return false};
+    let Ok(payload)=serde_json::from_reader::<_,serde_json::Value>(response.body_mut().as_reader()) else{return false};
+    payload.get("node").and_then(|node|node.get("id")).and_then(|id|id.as_str())==Some(boot.node_id.as_str())
 }
 fn recover_active_vault(runtime:&NodeRuntime)->Option<PathBuf> {
     if !is_node_running(){return None}

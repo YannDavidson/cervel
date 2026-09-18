@@ -100,7 +100,7 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
   const scope=await resolveRetrievalScope(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,requestedLibraryIds:[]});
   const values: any[] = [input.nodeId, input.workspaceId, input.principalId];
   const where = [`ko.node_id=$1`, `ko.workspace_id=$2`, `ko.lifecycle_status<>'deleted'`];
-  if(scope.allowedCkoIds){values.push(scope.allowedCkoIds);where.push(`ko.id=ANY(${values.length}::uuid[])`);}
+  if(scope.allowedCkoIds){values.push(scope.allowedCkoIds);where.push(`ko.id=ANY($${values.length}::uuid[])`);}
   if (input.type) { values.push(input.type); where.push(`ko.type=$${values.length}`); }
   if (input.query?.trim()) { values.push(`%${input.query.trim()}%`); where.push(`(ko.title ILIKE $${values.length} OR coalesce(ko.summary,'') ILIKE $${values.length})`); }
   if (input.corpusKey || input.megaTab || input.subtab) {

@@ -6,14 +6,22 @@ export type BuiltinCorpusKey = typeof BUILTIN_CORPUS_KEYS[number];
 export type CorpusVisibility = "public" | "node" | "restricted" | "private";
 export type TaxonomyNode = { key:string; title:string; tabs:Array<{key:string;title:string;subtabs:string[]}> };
 export type CorpusDefinition = { key:string; title:string; description:string; visibility:CorpusVisibility; taxonomy:TaxonomyNode[]; extension_of?:string|null; rules:CorpusRule[] };
-export type CorpusRule = { field:"type"|"title"|"summary"|"language"|"jurisdiction"|"tag"|"topic"|"vertical"|"intent"; terms:string[]; weight:number; mega_tab:string; tab:string; subtab?:string };
+export type CorpusRule = { field:"type"|"title"|"summary"|"language"|"jurisdiction"|"tag"|"topic"|"vertical"|"intent"|"source"|"provenance"|"relationship"|"temporal"|"authority"; terms:string[]; weight:number; mega_tab:string; tab:string; subtab?:string };
 export type CorpusCandidate = { corpus_key:string; confidence:number; mega_tab:string; tab:string; subtab:string|null; reasons:string[] };
-export type ClassificationInput = { type?:string; title?:string; summary?:string; languages?:string[]; jurisdictions?:string[]; tags?:string[]; topics?:string[]; verticals?:string[]; intents?:string[] };
+export type ClassificationInput = { type?:string; title?:string; summary?:string; languages?:string[]; jurisdictions?:string[]; tags?:string[]; topics?:string[]; verticals?:string[]; intents?:string[]; sources?:string[]; provenance?:string[]; relationships?:string[]; temporal?:string[]; authority?:string[] };
 
 type BranchSpec=[string,string[],string[]?];
 const slug=(v:string)=>v.toLowerCase().normalize("NFKC").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const taxonomy=(branches:BranchSpec[]):TaxonomyNode[]=>branches.map(([title,,subtabs])=>({key:slug(title),title,tabs:[{key:"overview",title:"Overview",subtabs:subtabs??["Overview","Records","Relationships","Timeline","Sources"]}]}));
-const rules=(branches:BranchSpec[]):CorpusRule[]=>branches.map(([title,terms])=>({field:"topic",terms,weight:.55,mega_tab:slug(title),tab:"overview"}));
+const rules=(branches:BranchSpec[]):CorpusRule[]=>branches.flatMap(([title,terms])=>[
+ {field:"topic",terms,weight:.55,mega_tab:slug(title),tab:"overview"},
+ {field:"tag",terms,weight:.65,mega_tab:slug(title),tab:"overview"},
+ {field:"type",terms,weight:.45,mega_tab:slug(title),tab:"overview"},
+ {field:"source",terms,weight:.4,mega_tab:slug(title),tab:"overview"},
+ {field:"provenance",terms,weight:.35,mega_tab:slug(title),tab:"overview"},
+ {field:"relationship",terms,weight:.4,mega_tab:slug(title),tab:"overview"},
+ {field:"authority",terms,weight:.3,mega_tab:slug(title),tab:"overview"}
+] as CorpusRule[]);
 const corpus=(key:BuiltinCorpusKey,title:string,description:string,visibility:CorpusVisibility,branches:BranchSpec[],extra:CorpusRule[]=[]):CorpusDefinition=>({key,title,description,visibility,taxonomy:taxonomy(branches),rules:[...rules(branches),...extra]});
 
 const LIFE:BranchSpec[]=[
@@ -202,7 +210,7 @@ export function validateCorpusDefinition(definition:CorpusDefinition):CorpusDefi
  return definition;
 }
 export function classifyForCorpora(input:ClassificationInput,definitions:readonly CorpusDefinition[]=BUILTIN_CORPORA,threshold=.3):CorpusCandidate[]{
- const narrative=normalize([input.title??"",input.summary??""]),fields:Record<CorpusRule["field"],string>={type:normalize(input.type),title:normalize(input.title),summary:normalize(input.summary),language:normalize(input.languages),jurisdiction:normalize(input.jurisdictions),tag:normalize(input.tags),topic:`${normalize(input.topics)} ${narrative}`,vertical:`${normalize(input.verticals)} ${narrative}`,intent:`${normalize(input.intents)} ${narrative}`};
+ const narrative=normalize([input.title??"",input.summary??""]),fields:Record<CorpusRule["field"],string>={type:normalize(input.type),title:normalize(input.title),summary:normalize(input.summary),language:normalize(input.languages),jurisdiction:normalize(input.jurisdictions),tag:normalize(input.tags),topic:`${normalize(input.topics)} ${narrative}`,vertical:`${normalize(input.verticals)} ${narrative}`,intent:`${normalize(input.intents)} ${narrative}`,source:normalize(input.sources),provenance:normalize(input.provenance),relationship:normalize(input.relationships),temporal:normalize(input.temporal),authority:normalize(input.authority)};
  return definitions.flatMap(def=>{const coordinates=new Map<string,{rule:CorpusRule;score:number;reasons:string[]}>();for(const r of def.rules){const hits=r.terms.filter(term=>fields[r.field].includes(term.toLowerCase()));if(!hits.length)continue;const key=`${r.mega_tab}/${r.tab}/${r.subtab??""}`,current=coordinates.get(key)??{rule:r,score:0,reasons:[]};current.score+=Math.min(r.weight,r.weight*hits.length);current.reasons.push(`${r.field}:${hits.join(",")}`);coordinates.set(key,current);}return [...coordinates.values()].filter(x=>x.score>=threshold).map(x=>({corpus_key:def.key,confidence:Math.min(.99,Number(x.score.toFixed(3))),mega_tab:x.rule.mega_tab,tab:x.rule.tab,subtab:x.rule.subtab??null,reasons:x.reasons}));}).sort((a,b)=>b.confidence-a.confidence||a.corpus_key.localeCompare(b.corpus_key)||a.mega_tab.localeCompare(b.mega_tab));
 }
 export function corpusRegistryDigest(definitions:readonly CorpusDefinition[]=BUILTIN_CORPORA):string{return createHash("sha256").update(JSON.stringify(definitions)).digest("hex");}

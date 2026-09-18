@@ -3,6 +3,8 @@ import { withTransaction } from "./db";
 import { assertPrincipalInNode } from "./access";
 import { resolveRetrievalScope } from "./retrieval";
 import { listVaultExplorerObjects, loadVaultExplorer, loadVaultExplorerObject } from "./vault-explorer";
+import { fileLifeCko } from "./life-corpus";
+import { fileEnterpriseCko } from "./enterprise-corpus";
 
 function principal(request: FastifyRequest): string {
   const value=request.headers["x-cervel-principal-id"];
@@ -36,8 +38,29 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
     return loadVaultExplorer(client,{nodeId:node_id,workspaceId:workspace_id,principalId});
   }));
   app.get("/v1/local/explorer/objects",async(request)=>withTransaction(async client=>{
-    const principalId=principal(request),{node_id,workspace_id,type,q,corpus_key,mega_tab,limit}=request.query as {node_id?:string;workspace_id?:string;type?:string;q?:string;corpus_key?:"life"|"enterprise";mega_tab?:string;limit?:string};if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);
-    return listVaultExplorerObjects(client,{nodeId:node_id,workspaceId:workspace_id,principalId,type,query:q,corpusKey:corpus_key,megaTab:mega_tab,limit:limit?Number(limit):100});
+    const principalId=principal(request),{node_id,workspace_id,type,q,corpus_key,mega_tab,subtab,limit}=request.query as {node_id?:string;workspace_id?:string;type?:string;q?:string;corpus_key?:"life"|"enterprise";mega_tab?:string;subtab?:string;limit?:string};if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);
+    return listVaultExplorerObjects(client,{nodeId:node_id,workspaceId:workspace_id,principalId,type,query:q,corpusKey:corpus_key,megaTab:mega_tab,subtab,limit:limit?Number(limit):100});
+  }));
+  app.post("/v1/local/explorer/file",async(request,reply)=>withTransaction(async client=>{
+    const principalId=principal(request),body=request.body as {node_id?:string;workspace_id?:string;cko_id?:string;corpus_key?:"life"|"enterprise";mega_tab?:string;subtab?:string};
+    if(!body.node_id||!body.workspace_id||!body.cko_id||!body.corpus_key||!body.mega_tab)throw Object.assign(new Error("CORPUS_FILE_CONTEXT_REQUIRED"),{statusCode:400});
+    if(body.corpus_key!=="life"&&body.corpus_key!=="enterprise")throw Object.assign(new Error("CORPUS_FILE_KEY_INVALID"),{statusCode:400});
+    await assertPrincipalInNode(client,principalId,body.node_id);await assertWorkspace(client,body.node_id,body.workspace_id);
+    if(body.corpus_key==="life"){
+      const filed=await fileLifeCko(client,{nodeId:body.node_id,workspaceId:body.workspace_id,principalId,ckoId:body.cko_id,megaTab:body.mega_tab,subtab:body.subtab});
+      return reply.code(201).send({corpus_key:"life",membership:filed});
+    }
+    const tenants=await client.query(
+      `SELECT t.id FROM enterprise_tenants t
+         JOIN corpus_definitions cd ON cd.id=t.corpus_id
+         JOIN enterprise_tenant_members m ON m.tenant_id=t.id AND m.principal_id=$3 AND m.role IN('contributor','manager','authority')
+        WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND t.status='active'
+        ORDER BY t.is_default DESC,t.created_at ASC LIMIT 2`,
+      [body.node_id,body.workspace_id,principalId]
+    );
+    if(tenants.rowCount!==1)throw Object.assign(new Error("ENTERPRISE_TENANT_CONTEXT_REQUIRED"),{statusCode:409});
+    const filed=await fileEnterpriseCko(client,{tenantId:tenants.rows[0].id,principalId,ckoId:body.cko_id,megaTab:body.mega_tab,subtab:body.subtab,authorityStatus:"reported"});
+    return reply.code(201).send({corpus_key:"enterprise",membership:filed});
   }));
   app.get("/v1/local/explorer/objects/:id",async(request)=>withTransaction(async client=>{
     const principalId=principal(request),{node_id,workspace_id}=request.query as {node_id?:string;workspace_id?:string};const {id}=request.params as {id:string};if(!node_id||!workspace_id)throw Object.assign(new Error("NODE_AND_WORKSPACE_REQUIRED"),{statusCode:400});await assertPrincipalInNode(client,principalId,node_id);

@@ -1,0 +1,46 @@
+name: CERVEL Navigable Corpus Workspace
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/local-node-routes.ts'
+      - 'apps/api/src/vault-explorer.ts'
+      - 'apps/desktop-tauri/**'
+      - 'packages/life-corpus/**'
+      - 'packages/enterprise-corpus/**'
+      - 'tests/navigable-corpus-workspace/**'
+      - '.github/workflows/navigable-corpus-workspace.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus-workspace-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Renderer syntax
+        run: node --check apps/desktop-tauri/ui/workspace.js
+      - run: npx jest tests/navigable-corpus-workspace --runInBand
+      - run: npm run build
+      - run: npx tsx scripts/desktop-workspace-contract.ts
+
+  native-corpus-bridge:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run prepare:desktop:ui
+      - run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml

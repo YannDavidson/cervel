@@ -89,6 +89,7 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
   type?: string;
   corpusKey?: "life" | "enterprise";
   megaTab?: string;
+  subtab?: string;
   limit?: number;
 }) {
   await assertWorkspace(client, input.nodeId, input.workspaceId);
@@ -96,15 +97,17 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
   const where = [`ko.node_id=$1`, `ko.workspace_id=$2`, `ko.lifecycle_status<>'deleted'`];
   if (input.type) { values.push(input.type); where.push(`ko.type=$${values.length}`); }
   if (input.query?.trim()) { values.push(`%${input.query.trim()}%`); where.push(`(ko.title ILIKE $${values.length} OR coalesce(ko.summary,'') ILIKE $${values.length})`); }
-  if (input.corpusKey || input.megaTab) {
+  if (input.corpusKey || input.megaTab || input.subtab) {
     const corpusIndex = input.corpusKey ? (values.push(input.corpusKey), values.length) : null;
     const tabIndex = input.megaTab ? (values.push(input.megaTab), values.length) : null;
+    const subtabIndex = input.subtab ? (values.push(input.subtab), values.length) : null;
     where.push(`EXISTS(
       SELECT 1 FROM corpus_cko_semantic_view v
        JOIN corpus_definitions cd ON cd.id=v.corpus_id
       WHERE v.cko_id=ko.id
         ${corpusIndex ? `AND v.corpus_key=$${corpusIndex}` : ""}
-        ${tabIndex ? `AND v.mega_tab=$${tabIndex}` : ""}
+        ${tabIndex ? `AND v.mega_tab=${tabIndex}` : ""}
+        ${subtabIndex ? `AND v.subtab=${subtabIndex}` : ""}
         AND (cd.visibility IN ('public','node') OR cd.owner_principal_id=$3 OR EXISTS(SELECT 1 FROM corpus_access_grants cag WHERE cag.corpus_id=cd.id AND cag.principal_id=$3))
         AND ${membershipVisibility("$3")}
     )`);

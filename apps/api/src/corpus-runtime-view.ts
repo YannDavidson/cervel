@@ -1,4 +1,6 @@
-export type RuntimeCorpusViewKey = "life" | "enterprise";
+import { BUILTIN_CORPUS_KEYS, type BuiltinCorpusKey } from "../../../packages/corpus-engine/src";
+
+export type RuntimeCorpusViewKey = BuiltinCorpusKey;
 
 export type SemanticMembership = {
   corpus_id: string;
@@ -29,7 +31,7 @@ export type CanonicalCorpusObject = {
 };
 
 export function runtimeCorpusViewKey(value: unknown): RuntimeCorpusViewKey {
-  if (value === "life" || value === "enterprise") return value;
+  if (typeof value === "string" && (BUILTIN_CORPUS_KEYS as readonly string[]).includes(value)) return value as RuntimeCorpusViewKey;
   throw Object.assign(new Error("CORPUS_RUNTIME_VIEW_INVALID"), { statusCode: 400 });
 }
 

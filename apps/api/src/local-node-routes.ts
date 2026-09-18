@@ -44,6 +44,7 @@ export function registerLocalNodeRoutes(app: FastifyInstance): void {
   app.post("/v1/local/explorer/file",async(request,reply)=>withTransaction(async client=>{
     const principalId=principal(request),body=request.body as {node_id?:string;workspace_id?:string;cko_id?:string;corpus_key?:"life"|"enterprise";mega_tab?:string;subtab?:string};
     if(!body.node_id||!body.workspace_id||!body.cko_id||!body.corpus_key||!body.mega_tab)throw Object.assign(new Error("CORPUS_FILE_CONTEXT_REQUIRED"),{statusCode:400});
+    if(body.corpus_key!=="life"&&body.corpus_key!=="enterprise")throw Object.assign(new Error("CORPUS_FILE_KEY_INVALID"),{statusCode:400});
     await assertPrincipalInNode(client,principalId,body.node_id);await assertWorkspace(client,body.node_id,body.workspace_id);
     if(body.corpus_key==="life"){
       const filed=await fileLifeCko(client,{nodeId:body.node_id,workspaceId:body.workspace_id,principalId,ckoId:body.cko_id,megaTab:body.mega_tab,subtab:body.subtab});

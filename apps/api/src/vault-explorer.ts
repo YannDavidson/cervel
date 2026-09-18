@@ -1,5 +1,7 @@
 import type { PoolClient } from "pg";
 import { querySemanticViews } from "./corpus-semantic-views";
+import { ensureBuiltinCorpora } from "./corpus-engine";
+import { BUILTIN_CORPUS_KEYS } from "../../../packages/corpus-engine/src";
 
 const membershipVisibility = (principalParam: string) => `
   (v.branch_visibility<>'sealed' OR EXISTS(
@@ -25,6 +27,7 @@ async function assertWorkspace(client: PoolClient, nodeId: string, workspaceId: 
 
 export async function loadVaultExplorer(client: PoolClient, input: { nodeId: string; workspaceId: string; principalId: string }) {
   const workspace = await assertWorkspace(client, input.nodeId, input.workspaceId);
+  await ensureBuiltinCorpora(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId});
   const [types, corpora, recent] = await Promise.all([
     client.query(
       `SELECT ko.type,count(*)::int AS canonical_cko_count
@@ -35,7 +38,7 @@ export async function loadVaultExplorer(client: PoolClient, input: { nodeId: str
     ),
     client.query(
       `SELECT corpus_key FROM corpus_definitions
-        WHERE node_id=$1 AND workspace_id=$2 AND enabled=true AND corpus_key IN ('life','enterprise')`,
+        WHERE node_id=$1 AND workspace_id=$2 AND enabled=true AND built_in=true`,
       [input.nodeId, input.workspaceId]
     ),
     client.query(
@@ -67,7 +70,7 @@ export async function loadVaultExplorer(client: PoolClient, input: { nodeId: str
 
   const available = new Set(corpora.rows.map((row: any) => String(row.corpus_key)));
   const semantic_views: Record<string, unknown> = {};
-  for (const view of ["life", "enterprise"] as const) {
+  for (const view of BUILTIN_CORPUS_KEYS) {
     if (available.has(view)) semantic_views[view] = await querySemanticViews(client, { nodeId: input.nodeId, workspaceId: input.workspaceId, principalId: input.principalId, view });
   }
 
@@ -87,7 +90,7 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
   principalId: string;
   query?: string;
   type?: string;
-  corpusKey?: "life" | "enterprise";
+  corpusKey?: string;
   megaTab?: string;
   subtab?: string;
   limit?: number;

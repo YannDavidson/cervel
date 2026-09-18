@@ -2,14 +2,27 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { uuidv7 } from "./uuidv7";
 import { BUILTIN_CORPORA, CORPUS_ENGINE_VERSION, classifyForCorpora, validateCorpusDefinition, type ClassificationInput, type CorpusDefinition, type CorpusVisibility } from "../../../packages/corpus-engine/src";
+import { LIFE_RULES, LIFE_TAXONOMY } from "../../../packages/life-corpus/src";
+import { ENTERPRISE_RULES, ENTERPRISE_TAXONOMY } from "../../../packages/enterprise-corpus/src";
 
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 async function workspaceScope(c: PoolClient, nodeId: string, workspaceId: string) { const r=await c.query(`SELECT 1 FROM workspaces WHERE id=$1 AND node_id=$2`,[workspaceId,nodeId]); if(r.rowCount!==1) throw Object.assign(new Error("CORPUS_WORKSPACE_SCOPE_INVALID"),{statusCode:404}); }
 const visible = (alias="cd") => `(${alias}.visibility IN ('public','node') OR ${alias}.owner_principal_id=$3 OR EXISTS(SELECT 1 FROM corpus_access_grants cag WHERE cag.corpus_id=${alias}.id AND cag.principal_id=$3))`;
 
 export async function ensureBuiltinCorpora(c:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string}){
-  await workspaceScope(c,input.nodeId,input.workspaceId); const rows=[];
-  for(const def of BUILTIN_CORPORA){if(def.key==="life"||def.key==="enterprise"){const table=def.key==="life"?"life_corpus_branch_policies":"enterprise_branch_policies",installed=await c.query(`SELECT cd.* FROM corpus_definitions cd WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND cd.corpus_key=$3 AND EXISTS(SELECT 1 FROM ${table} p WHERE p.corpus_id=cd.id)`,[input.nodeId,input.workspaceId,def.key]);if(installed.rowCount){rows.push(installed.rows[0]);continue;}}const id=uuidv7();const r=await c.query(`INSERT INTO corpus_definitions(id,node_id,workspace_id,corpus_key,title,description,built_in,visibility,taxonomy,classification_rules,owner_principal_id) VALUES($1,$2,$3,$4,$5,$6,true,$7,$8::jsonb,$9::jsonb,$10) ON CONFLICT(node_id,workspace_id,corpus_key) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,taxonomy=EXCLUDED.taxonomy,classification_rules=EXCLUDED.classification_rules,updated_at=now() RETURNING *`,[id,input.nodeId,input.workspaceId,def.key,def.title,def.description,def.visibility,JSON.stringify(def.taxonomy),JSON.stringify(def.rules),input.principalId]);rows.push(r.rows[0]);}
+  await workspaceScope(c,input.nodeId,input.workspaceId);const rows=[];
+  for(const base of BUILTIN_CORPORA){
+    const def:CorpusDefinition=base.key==="life"?{...base,taxonomy:LIFE_TAXONOMY,rules:LIFE_RULES}:base.key==="enterprise"?{...base,taxonomy:ENTERPRISE_TAXONOMY,rules:ENTERPRISE_RULES}:base;
+    if(def.key==="life"||def.key==="enterprise"){
+      const table=def.key==="life"?"life_corpus_branch_policies":"enterprise_branch_policies";
+      const installed=await c.query(`SELECT cd.* FROM corpus_definitions cd WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND cd.corpus_key=$3 AND EXISTS(SELECT 1 FROM ${table} p WHERE p.corpus_id=cd.id)`,[input.nodeId,input.workspaceId,def.key]);
+      if(installed.rowCount){
+        const refreshed=await c.query(`UPDATE corpus_definitions SET title=$4,description=$5,taxonomy=$6::jsonb,classification_rules=$7::jsonb,updated_at=now() WHERE id=$8 RETURNING *`,[input.nodeId,input.workspaceId,def.key,def.title,def.description,JSON.stringify(def.taxonomy),JSON.stringify(def.rules),installed.rows[0].id]);
+        rows.push(refreshed.rows[0]);continue;
+      }
+    }
+    const id=uuidv7(),r=await c.query(`INSERT INTO corpus_definitions(id,node_id,workspace_id,corpus_key,title,description,built_in,visibility,taxonomy,classification_rules,owner_principal_id) VALUES($1,$2,$3,$4,$5,$6,true,$7,$8::jsonb,$9::jsonb,$10) ON CONFLICT(node_id,workspace_id,corpus_key) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,taxonomy=EXCLUDED.taxonomy,classification_rules=EXCLUDED.classification_rules,updated_at=now() RETURNING *`,[id,input.nodeId,input.workspaceId,def.key,def.title,def.description,def.visibility,JSON.stringify(def.taxonomy),JSON.stringify(def.rules),input.principalId]);rows.push(r.rows[0]);
+  }
   return {engine_version:CORPUS_ENGINE_VERSION,corpora:rows};
 }
 export async function listCorpora(c:PoolClient,input:{nodeId:string;workspaceId:string;principalId:string}){await workspaceScope(c,input.nodeId,input.workspaceId);const r=await c.query(`SELECT cd.*,coalesce((SELECT count(*)::int FROM corpus_memberships cm WHERE cm.corpus_id=cd.id),0) membership_count FROM corpus_definitions cd WHERE cd.node_id=$1 AND cd.workspace_id=$2 AND cd.enabled=true AND ${visible()} ORDER BY cd.built_in DESC,cd.title`,[input.nodeId,input.workspaceId,input.principalId]);return r.rows;}

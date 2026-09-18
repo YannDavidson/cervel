@@ -1,0 +1,53 @@
+name: CERVEL Multi-Corpus Registry
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/corpus-engine/**'
+      - 'packages/life-corpus/**'
+      - 'packages/enterprise-corpus/**'
+      - 'apps/api/src/corpus-*.ts'
+      - 'apps/api/src/vault-explorer.ts'
+      - 'apps/api/src/local-node-routes.ts'
+      - 'apps/desktop-tauri/**'
+      - 'db/migrations/035_multi_corpus_registry.sql'
+      - 'tests/multi-corpus-registry/**'
+      - 'tests/corpus-engine/**'
+      - 'tests/corpus-runtime/**'
+      - 'scripts/corpus-engine-smoke.ts'
+      - '.github/workflows/multi-corpus-registry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  multi-corpus-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Desktop renderer syntax
+        run: node --check apps/desktop-tauri/ui/workspace.js
+      - name: Registry and runtime contracts
+        run: npx jest tests/multi-corpus-registry tests/corpus-engine tests/corpus-runtime tests/semantic-views tests/navigable-corpus-workspace --runInBand
+      - name: TypeScript build
+        run: npm run build
+
+  native-universal-corpus-bridge:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run prepare:desktop:ui
+      - run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml

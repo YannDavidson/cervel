@@ -44,6 +44,7 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
     const explorer=readFileSync("apps/api/src/vault-explorer.ts","utf8");
     const local=readFileSync("apps/api/src/local-node-routes.ts","utf8");
     const desktop=readFileSync("apps/desktop-tauri/ui/workspace.js","utf8");
+    const index=readFileSync("apps/desktop-tauri/ui/index.html","utf8");
     const rust=readFileSync("apps/desktop-tauri/src-tauri/src/lib.rs","utf8");
     expect(explorer).toContain("for (const view of BUILTIN_CORPUS_KEYS)");
     expect(explorer).toContain("ensureBuiltinCorpora");
@@ -51,6 +52,9 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
     expect(local).toContain('tab:"overview"');
     expect(desktop).toContain("canonicalCorpusOrder=['life','enterprise','knowledge','world','civilization','machine','ai','experience','resource','civic-national']");
     expect(desktop).toContain("explorer.semantic_views?.[key]");
+    expect(desktop).toContain("[data-corpus-open]");
+    for(const key of ["life","enterprise","knowledge","world","civilization","machine","ai","experience","resource","civic-national"]) expect(index).toContain(`data-corpus-open="${key}"`);
+    expect(index).toContain("<h2>Canonical Corpora</h2>");
     expect(rust).not.toContain('corpus=="life"||corpus=="enterprise"');
   });
 
@@ -58,6 +62,9 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
     const engine=readFileSync("apps/api/src/corpus-engine.ts","utf8");
     const migration=readFileSync("db/migrations/035_multi_corpus_registry.sql","utf8");
     expect(engine).toContain("corpus_membership_suppressions");
+    expect(engine).toContain("resolveRetrievalScope");
+    expect(engine).toContain("provenance_io");
+    expect(engine).toContain("FROM relationships");
     expect(engine).toContain("membership_source<>'manual'");
     expect(engine).toContain("removeMembership");
     expect(engine).toContain("CORPUS_TAXONOMY_COORDINATE_INVALID");
@@ -71,6 +78,7 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
     for(const marker of ["/v1/corpora","/v1/corpus-runtime","/v1/corpora/classify/:ckoId","/v1/corpora/:id/memberships","/v1/corpora/memberships/:ckoId","/v1/corpus-view"]) expect(routes).toContain(marker);
     expect(routes).toContain('app.delete("/v1/corpora/memberships/:membershipId"');
     expect(engine).toContain("corpus_cko_semantic_view");
+    expect(engine).toContain("scope.allowedCkoIds");
     expect(engine).not.toMatch(/openai|anthropic|gemini/i);
   });
 });

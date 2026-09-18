@@ -38,8 +38,9 @@ describe("Desktop persistence, session recovery, and graph UX",()=>{
     expect(workspace).toContain("await loadExplorer()");
     expect(workspace).toContain("await loadVault(");
     expect(workspace).toContain("await window.CERVEL_HOME?.loadHome?.()");
-    const resets=(workspace.match(/refreshKnowledgeSurfaces\(\{reset:true\}\)/g)||[]).length;
-    expect(resets).toBeGreaterThanOrEqual(3);
+    const contextAwareRefreshes=(workspace.match(/refreshKnowledgeSurfaces\(\{reset:!captureTarget\}\)/g)||[]).length;
+    expect(contextAwareRefreshes).toBeGreaterThanOrEqual(3);
+    expect(workspace).toContain("if(reset)resetExplorerToAll()");
     expect(workspace).toContain("document.querySelector('[data-view=\"vault\"]')?.addEventListener('click'");
   });
 

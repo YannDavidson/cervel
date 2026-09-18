@@ -34,7 +34,6 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
       topics:["research","language","history","university","ai","funding","archive"]
     });
     const corpora=new Set(result.map(x=>x.corpus_key));
-    expect(corpora).toEqual(expect.objectContaining ? corpora : corpora);
     for(const key of ["enterprise","knowledge","civilization","ai","civic-national"]) expect(corpora.has(key)).toBe(true);
     expect(result.filter(x=>x.corpus_key==="civic-national").length).toBeGreaterThan(1);
     const coordinates=result.map(x=>[x.corpus_key,x.mega_tab,x.tab,x.subtab??""].join("/"));

@@ -21,8 +21,8 @@ describe("Navigable Corpus Workspace",()=>{
 
   test("folder navigation filters canonical CKOs without creating a second store",()=>{
     expect(explorer).toContain("subtab?: string");
-    expect(explorer).toContain("AND v.mega_tab=${tabIndex}");
-    expect(explorer).toContain("AND v.subtab=${subtabIndex}");
+    expect(explorer).toContain("AND v.mega_tab=$${tabIndex}");
+    expect(explorer).toContain("AND v.subtab=$${subtabIndex}");
     expect(rust).toContain("&subtab=");
     expect(rust).toContain("vault_explorer_objects");
     expect(rust).not.toContain("corpus-folder-store");

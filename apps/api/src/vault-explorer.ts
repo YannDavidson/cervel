@@ -109,8 +109,8 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
        JOIN corpus_definitions cd ON cd.id=v.corpus_id
       WHERE v.cko_id=ko.id
         ${corpusIndex ? `AND v.corpus_key=$${corpusIndex}` : ""}
-        ${tabIndex ? `AND v.mega_tab=${tabIndex}` : ""}
-        ${subtabIndex ? `AND v.subtab=${subtabIndex}` : ""}
+        ${tabIndex ? `AND v.mega_tab=$${tabIndex}` : ""}
+        ${subtabIndex ? `AND v.subtab=$${subtabIndex}` : ""}
         AND (cd.visibility IN ('public','node') OR cd.owner_principal_id=$3 OR EXISTS(SELECT 1 FROM corpus_access_grants cag WHERE cag.corpus_id=cd.id AND cag.principal_id=$3))
         AND ${membershipVisibility("$3")}
     )`);

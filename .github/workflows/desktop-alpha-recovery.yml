@@ -1,0 +1,45 @@
+name: CERVEL Desktop Alpha Recovery
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop-tauri/**'
+      - 'tests/desktop-alpha-recovery/**'
+      - '.github/workflows/desktop-alpha-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Renderer syntax checks
+        run: |
+          node --check apps/desktop-tauri/ui/app.js
+          node --check apps/desktop-tauri/ui/home-experience.js
+          node --check apps/desktop-tauri/ui/workspace.js
+          node --check apps/desktop-tauri/ui/intelligence.js
+      - run: npx jest tests/desktop-alpha-recovery --runInBand
+      - run: npm run build
+
+  canonical-tauri:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run prepare:desktop:ui
+      - run: cargo check --manifest-path apps/desktop-tauri/src-tauri/Cargo.toml

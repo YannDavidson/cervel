@@ -7,7 +7,9 @@ const MAX_DESKTOP_FILE_BYTES: u64 = 24 * 1024 * 1024;
 #[derive(Default)] struct RuntimeState { active_vault: Option<PathBuf> }
 struct NodeRuntime(Mutex<RuntimeState>);
 #[derive(Clone, Serialize)] struct NodeStatus { running: bool, endpoint: String, managed_by_desktop: bool, vault: Option<String> }
-#[derive(Serialize, Deserialize)] struct Bootstrap { node_id: String, workspace_id: String, principal_id: String, storage_location_id: String }
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all="camelCase")]
+struct Bootstrap { node_id: String, workspace_id: String, principal_id: String, storage_location_id: String }
 #[derive(Deserialize)] struct VaultSecrets { local_api_token: String }
 #[derive(Serialize, Deserialize)] struct VaultObject { id: String, #[serde(rename="type")] kind: String, title: String, summary: Option<String>, updated_at: String }
 #[derive(Deserialize)] struct ObjectList { objects: Vec<VaultObject> }

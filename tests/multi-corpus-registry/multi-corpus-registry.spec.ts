@@ -57,7 +57,7 @@ describe("PR #92 — Multi-Corpus Registry & Expanded Canonical Corpuses",()=>{
     for(const surface of [mobile,capture,compiler]) expect(surface).toContain("autoClassifyCkoIfRegistered");
     expect(mobile).toContain('triggerEvent:"capture.ingested"');
     expect(vault).toContain("resolveRetrievalScope");
-    expect(vault).toContain("ko.id=ANY(${values.length}::uuid[])");
+    expect(vault).toContain("ko.id=ANY($${values.length}::uuid[])");
     expect(desktop).toContain("canonicalCorpusOrder=['life','enterprise','knowledge','world','civilization','machine','ai','experience','resource','civic-national']");
     expect(desktop).toContain("explorer.semantic_views?.[key]");
     expect(desktop).toContain("[data-corpus-open]");

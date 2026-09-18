@@ -18,7 +18,8 @@ describe("canonical CERVEL Desktop visual convergence", () => {
 
   test("renders the reference product language without synthetic demo state", () => {
     expect(html).toContain("Your life, remembered");
-    expect(html).toContain("Sovereign Knowledge");
+    expect(html).not.toContain("<span>Sovereign Knowledge</span>");
+    expect(html).toContain("<strong>CERVEL</strong>");
     expect(html).toContain("Vault Explorer");
     expect(html).toContain("Ask CERVEL");
     expect(html).toContain("Local Node");

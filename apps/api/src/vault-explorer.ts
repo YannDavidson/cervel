@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { querySemanticViews } from "./corpus-semantic-views";
 import { ensureBuiltinCorpora } from "./corpus-engine";
 import { BUILTIN_CORPUS_KEYS } from "../../../packages/corpus-engine/src";
+import { resolveRetrievalScope } from "./retrieval";
 
 const membershipVisibility = (principalParam: string) => `
   (v.branch_visibility<>'sealed' OR EXISTS(
@@ -96,8 +97,10 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
   limit?: number;
 }) {
   await assertWorkspace(client, input.nodeId, input.workspaceId);
+  const scope=await resolveRetrievalScope(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,requestedLibraryIds:[]});
   const values: any[] = [input.nodeId, input.workspaceId, input.principalId];
   const where = [`ko.node_id=$1`, `ko.workspace_id=$2`, `ko.lifecycle_status<>'deleted'`];
+  if(scope.allowedCkoIds){values.push(scope.allowedCkoIds);where.push(`ko.id=ANY(${values.length}::uuid[])`);}
   if (input.type) { values.push(input.type); where.push(`ko.type=$${values.length}`); }
   if (input.query?.trim()) { values.push(`%${input.query.trim()}%`); where.push(`(ko.title ILIKE $${values.length} OR coalesce(ko.summary,'') ILIKE $${values.length})`); }
   if (input.corpusKey || input.megaTab || input.subtab) {
@@ -133,6 +136,8 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
 
 export async function loadVaultExplorerObject(client: PoolClient, input: { nodeId: string; workspaceId: string; principalId: string; ckoId: string }) {
   await assertWorkspace(client, input.nodeId, input.workspaceId);
+  const scope=await resolveRetrievalScope(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,requestedLibraryIds:[]});
+  if(scope.allowedCkoIds&&!scope.allowedCkoIds.includes(input.ckoId))throw Object.assign(new Error("VAULT_CKO_ACCESS_FORBIDDEN"),{statusCode:403});
   const object = await client.query(
     `SELECT ko.*,
             (SELECT count(*)::int FROM artifacts a WHERE a.cko_id=ko.id) AS artifact_count,

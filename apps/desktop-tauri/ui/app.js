@@ -1,8 +1,21 @@
 const invoke=(cmd,args={})=>window.__TAURI__?.core?.invoke(cmd,args);
 const titles={home:'Your knowledge, persistent.',vault:'Vault',corpora:'Life & Enterprise',search:'Search',graph:'Knowledge Graph',capture:'Capture',cortex:'Ask CERVEL',trace:'Trace',deliverables:'Deliverables',models:'Model Settings',connections:'Connections'};
 let vaultRoot='';
+const THEME_KEY='cervel.desktop.theme';
+function applyTheme(theme){
+  const value=theme==='dark'?'dark':'light';
+  document.documentElement.dataset.theme=value;
+  const toggle=document.getElementById('appearance-toggle');
+  if(toggle){toggle.textContent=value==='dark'?'☀︎':'◐';toggle.setAttribute('aria-label',value==='dark'?'Switch to light appearance':'Switch to dark appearance');}
+  try{localStorage.setItem(THEME_KEY,value)}catch{}
+}
+function initTheme(){
+  let saved='';try{saved=localStorage.getItem(THEME_KEY)||''}catch{}
+  const preferred=saved||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');
+  applyTheme(preferred);
+}
 function show(view){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nav').forEach(x=>x.classList.remove('active'));document.getElementById(view)?.classList.add('active');document.querySelector(`[data-view="${view}"]`)?.classList.add('active');const title=document.getElementById('view-title');if(title)title.textContent=titles[view]||'CERVEL';}
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>show(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>show(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));document.getElementById('appearance-toggle')?.addEventListener('click',()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));initTheme();
 function escapeAttr(value=''){return String(value).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');}
 function credentialDialog({suggested='',passphraseOnly=false,title='Unlock CERVEL',action='Unlock & Start'}={}){return new Promise(resolve=>{const veil=document.createElement('div');veil.className='credential-veil';veil.innerHTML=`<form class="credential-card"><small>LOCAL VAULT</small><h3>${title}</h3><p>Your passphrase is used only for this local operation and is never persisted by the Desktop shell.</p>${passphraseOnly?'':`<input name="vault" spellcheck="false" placeholder="Vault path" value="${escapeAttr(suggested)}">`}<input name="passphrase" type="password" autocomplete="off" placeholder="Vault passphrase"><div><button type="button" data-cancel>Cancel</button><button class="primary" type="submit">${action}</button></div><small class="credential-error"></small></form>`;document.body.appendChild(veil);const form=veil.querySelector('form'),pass=form.elements.passphrase,error=veil.querySelector('.credential-error');pass.focus();veil.querySelector('[data-cancel]').onclick=()=>{pass.value='';veil.remove();resolve(null)};form.onsubmit=e=>{e.preventDefault();const vault=passphraseOnly?vaultRoot:form.elements.vault.value;if(!vault||pass.value.length<12){error.textContent='Choose a Vault and enter a 12+ character passphrase.';return;}const result={vaultPath:vault,passphrase:pass.value};pass.value='';veil.remove();resolve(result);};});}
 async function refresh(){try{const s=await invoke('node_status');const live=!!s?.running;document.getElementById('node-dot').classList.toggle('live',live);document.getElementById('node-label').textContent=live?'Local Node running':'Local Node offline';document.getElementById('node-endpoint').textContent=s?.endpoint||'127.0.0.1:8787';const connectionNode=document.getElementById('connection-node');if(connectionNode)connectionNode.textContent=live?'Healthy':'Offline';document.getElementById('node-btn').textContent=live?'Stop Node':'Start Node';if(s?.vault){vaultRoot=s.vault;document.getElementById('vault-path')?.replaceChildren(document.createTextNode(s.vault.split('/').slice(-2).join('/')));}}catch{document.getElementById('node-label').textContent='Desktop bridge unavailable';}}

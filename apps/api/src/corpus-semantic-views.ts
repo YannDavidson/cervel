@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import type { RuntimeCorpusViewKey } from "./corpus-runtime-view";
+import { resolveRetrievalScope } from "./retrieval";
 
 export type SemanticViewCount = {
   mega_tab: string;
@@ -54,6 +55,7 @@ export async function querySemanticViews(c: PoolClient, input: {
   principalId: string;
   view: RuntimeCorpusViewKey;
 }) {
+  const scope = await resolveRetrievalScope(c,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,requestedLibraryIds:[]});
   const corpus = await c.query(
     `SELECT cd.id,cd.corpus_key,cd.title,cd.taxonomy
        FROM corpus_definitions cd
@@ -76,16 +78,18 @@ export async function querySemanticViews(c: PoolClient, input: {
        FROM corpus_cko_semantic_view v
       WHERE v.corpus_id=$1
         AND ${permissionPredicate}
+        AND ($3::uuid[] IS NULL OR v.cko_id=ANY($3::uuid[]))
       GROUP BY v.mega_tab`,
-    [corpus.rows[0].id, input.principalId]
+    [corpus.rows[0].id, input.principalId, scope.allowedCkoIds]
   );
   const totals = await c.query(
     `SELECT count(DISTINCT v.cko_id)::int AS canonical_cko_count,
             count(*)::int AS membership_count
        FROM corpus_cko_semantic_view v
       WHERE v.corpus_id=$1
-        AND ${permissionPredicate}`,
-    [corpus.rows[0].id, input.principalId]
+        AND ${permissionPredicate}
+        AND ($3::uuid[] IS NULL OR v.cko_id=ANY($3::uuid[]))`,
+    [corpus.rows[0].id, input.principalId, scope.allowedCkoIds]
   );
 
   const normalized: SemanticViewCount[] = counts.rows.map((row: any) => ({

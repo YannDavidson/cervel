@@ -18,9 +18,9 @@ describe("PR #81 — Mega Tabs / Semantic Views", () => {
       "Personal Knowledge",
       "Digital Life",
       "Travel",
-      "Hobbies",
+      "Hobbies & Interests",
       "Goals",
-      "Civic / Community",
+      "Civic & Community",
       "Legal / Administrative",
       "Legacy"
     ]);

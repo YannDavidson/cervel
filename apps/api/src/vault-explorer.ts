@@ -1,5 +1,8 @@
 import type { PoolClient } from "pg";
 import { querySemanticViews } from "./corpus-semantic-views";
+import { ensureBuiltinCorpora } from "./corpus-engine";
+import { BUILTIN_CORPUS_KEYS } from "../../../packages/corpus-engine/src";
+import { resolveRetrievalScope } from "./retrieval";
 
 const membershipVisibility = (principalParam: string) => `
   (v.branch_visibility<>'sealed' OR EXISTS(
@@ -25,6 +28,7 @@ async function assertWorkspace(client: PoolClient, nodeId: string, workspaceId: 
 
 export async function loadVaultExplorer(client: PoolClient, input: { nodeId: string; workspaceId: string; principalId: string }) {
   const workspace = await assertWorkspace(client, input.nodeId, input.workspaceId);
+  await ensureBuiltinCorpora(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId});
   const [types, corpora, recent] = await Promise.all([
     client.query(
       `SELECT ko.type,count(*)::int AS canonical_cko_count
@@ -35,7 +39,7 @@ export async function loadVaultExplorer(client: PoolClient, input: { nodeId: str
     ),
     client.query(
       `SELECT corpus_key FROM corpus_definitions
-        WHERE node_id=$1 AND workspace_id=$2 AND enabled=true AND corpus_key IN ('life','enterprise')`,
+        WHERE node_id=$1 AND workspace_id=$2 AND enabled=true AND built_in=true`,
       [input.nodeId, input.workspaceId]
     ),
     client.query(
@@ -67,7 +71,7 @@ export async function loadVaultExplorer(client: PoolClient, input: { nodeId: str
 
   const available = new Set(corpora.rows.map((row: any) => String(row.corpus_key)));
   const semantic_views: Record<string, unknown> = {};
-  for (const view of ["life", "enterprise"] as const) {
+  for (const view of BUILTIN_CORPUS_KEYS) {
     if (available.has(view)) semantic_views[view] = await querySemanticViews(client, { nodeId: input.nodeId, workspaceId: input.workspaceId, principalId: input.principalId, view });
   }
 
@@ -87,14 +91,16 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
   principalId: string;
   query?: string;
   type?: string;
-  corpusKey?: "life" | "enterprise";
+  corpusKey?: string;
   megaTab?: string;
   subtab?: string;
   limit?: number;
 }) {
   await assertWorkspace(client, input.nodeId, input.workspaceId);
+  const scope=await resolveRetrievalScope(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,requestedLibraryIds:[]});
   const values: any[] = [input.nodeId, input.workspaceId, input.principalId];
   const where = [`ko.node_id=$1`, `ko.workspace_id=$2`, `ko.lifecycle_status<>'deleted'`];
+  if(scope.allowedCkoIds){values.push(scope.allowedCkoIds);where.push(`ko.id=ANY($${values.length}::uuid[])`);}
   if (input.type) { values.push(input.type); where.push(`ko.type=$${values.length}`); }
   if (input.query?.trim()) { values.push(`%${input.query.trim()}%`); where.push(`(ko.title ILIKE $${values.length} OR coalesce(ko.summary,'') ILIKE $${values.length})`); }
   if (input.corpusKey || input.megaTab || input.subtab) {
@@ -106,8 +112,8 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
        JOIN corpus_definitions cd ON cd.id=v.corpus_id
       WHERE v.cko_id=ko.id
         ${corpusIndex ? `AND v.corpus_key=$${corpusIndex}` : ""}
-        ${tabIndex ? `AND v.mega_tab=${tabIndex}` : ""}
-        ${subtabIndex ? `AND v.subtab=${subtabIndex}` : ""}
+        ${tabIndex ? `AND v.mega_tab=$${tabIndex}` : ""}
+        ${subtabIndex ? `AND v.subtab=$${subtabIndex}` : ""}
         AND (cd.visibility IN ('public','node') OR cd.owner_principal_id=$3 OR EXISTS(SELECT 1 FROM corpus_access_grants cag WHERE cag.corpus_id=cd.id AND cag.principal_id=$3))
         AND ${membershipVisibility("$3")}
     )`);
@@ -130,6 +136,8 @@ export async function listVaultExplorerObjects(client: PoolClient, input: {
 
 export async function loadVaultExplorerObject(client: PoolClient, input: { nodeId: string; workspaceId: string; principalId: string; ckoId: string }) {
   await assertWorkspace(client, input.nodeId, input.workspaceId);
+  const scope=await resolveRetrievalScope(client,{nodeId:input.nodeId,workspaceId:input.workspaceId,principalId:input.principalId,requestedLibraryIds:[]});
+  if(scope.allowedCkoIds&&!scope.allowedCkoIds.includes(input.ckoId))throw Object.assign(new Error("VAULT_CKO_ACCESS_FORBIDDEN"),{statusCode:403});
   const object = await client.query(
     `SELECT ko.*,
             (SELECT count(*)::int FROM artifacts a WHERE a.cko_id=ko.id) AS artifact_count,

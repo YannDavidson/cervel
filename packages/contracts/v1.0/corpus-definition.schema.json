@@ -1,17 +1,152 @@
 {
-  "$schema":"https://json-schema.org/draft/2020-12/schema",
-  "$id":"https://schemas.cervel.ai/corpus-engine/1.0/corpus-definition.schema.json",
-  "title":"CERVEL Corpus Definition v1.0",
-  "type":"object",
-  "additionalProperties":false,
-  "required":["key","title","description","visibility","taxonomy","rules"],
-  "properties":{
-    "key":{"type":"string","pattern":"^[a-z][a-z0-9-]{1,63}$"},
-    "title":{"type":"string","minLength":1},
-    "description":{"type":"string","minLength":1},
-    "visibility":{"enum":["public","node","restricted","private"]},
-    "extension_of":{"type":["string","null"]},
-    "taxonomy":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["key","title","tabs"],"properties":{"key":{"type":"string","minLength":1},"title":{"type":"string","minLength":1},"tabs":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["key","title","subtabs"],"properties":{"key":{"type":"string","minLength":1},"title":{"type":"string","minLength":1},"subtabs":{"type":"array","items":{"type":"string"}}}}}}}},
-    "rules":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","terms","weight","mega_tab","tab"],"properties":{"field":{"enum":["type","title","summary","language","jurisdiction","tag","topic","vertical","intent"]},"terms":{"type":"array","minItems":1,"items":{"type":"string"}},"weight":{"type":"number","exclusiveMinimum":0,"maximum":1},"mega_tab":{"type":"string","minLength":1},"tab":{"type":"string","minLength":1},"subtab":{"type":"string"}}}}
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.cervel.ai/corpus-engine/1.0/corpus-definition.schema.json",
+  "title": "CERVEL Corpus Definition v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "key",
+    "title",
+    "description",
+    "visibility",
+    "taxonomy",
+    "rules"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "visibility": {
+      "enum": [
+        "public",
+        "node",
+        "restricted",
+        "private"
+      ]
+    },
+    "extension_of": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "taxonomy": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "title",
+          "tabs"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tabs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "title",
+                "subtabs"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "subtabs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "terms",
+          "weight",
+          "mega_tab",
+          "tab"
+        ],
+        "properties": {
+          "field": {
+            "enum": [
+              "type",
+              "title",
+              "summary",
+              "language",
+              "jurisdiction",
+              "tag",
+              "topic",
+              "vertical",
+              "intent",
+              "source",
+              "provenance",
+              "relationship",
+              "temporal",
+              "authority"
+            ]
+          },
+          "terms": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "weight": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "mega_tab": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tab": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subtab": {
+            "type": "string"
+          }
+        }
+      }
+    }
   }
 }
